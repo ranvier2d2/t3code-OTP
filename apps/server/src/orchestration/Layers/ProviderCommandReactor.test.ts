@@ -110,7 +110,8 @@ describe("ProviderCommandReactor", () => {
         typeof input === "object" &&
         input !== null &&
         "provider" in input &&
-        (input.provider === "codex" || input.provider === "claudeAgent")
+        (input.provider === "codex" || input.provider === "claudeAgent" ||
+         input.provider === "cursor" || input.provider === "opencode")
           ? input.provider
           : "codex";
       const resumeCursor =
@@ -503,7 +504,7 @@ describe("ProviderCommandReactor", () => {
     });
   });
 
-  it("rejects a first turn when requested provider conflicts with the thread model", async () => {
+  it("allows provider switch on first turn when no active session exists", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();
 
@@ -530,26 +531,16 @@ describe("ProviderCommandReactor", () => {
       const thread = readModel.threads.find(
         (entry) => entry.id === ThreadId.makeUnsafe("thread-1"),
       );
-      return (
-        thread?.activities.some((activity) => activity.kind === "provider.turn.start.failed") ??
-        false
-      );
+      return thread?.session !== null && thread?.session !== undefined;
     });
 
-    expect(harness.startSession).not.toHaveBeenCalled();
-    expect(harness.sendTurn).not.toHaveBeenCalled();
+    // With no active session, the explicit provider choice should be honoured.
+    expect(harness.startSession).toHaveBeenCalled();
+    expect(harness.sendTurn).toHaveBeenCalled();
 
     const readModel = await Effect.runPromise(harness.engine.getReadModel());
     const thread = readModel.threads.find((entry) => entry.id === ThreadId.makeUnsafe("thread-1"));
-    expect(thread?.session).toBeNull();
-    expect(
-      thread?.activities.find((activity) => activity.kind === "provider.turn.start.failed"),
-    ).toMatchObject({
-      summary: "Provider turn start failed",
-      payload: {
-        detail: expect.stringContaining("cannot switch to 'claudeAgent'"),
-      },
-    });
+    expect(thread?.session?.providerName).toBe("claudeAgent");
   });
 
   it("rejects a turn when the requested model belongs to a different provider", async () => {

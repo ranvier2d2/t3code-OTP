@@ -522,6 +522,8 @@ describe("WebSocket Server", () => {
       authToken: options.authToken,
       autoBootstrapProjectFromCwd: options.autoBootstrapProjectFromCwd ?? false,
       logWebSocketEvents: options.logWebSocketEvents ?? Boolean(options.devUrl),
+      harnessPort: undefined,
+      harnessSecret: undefined,
     } satisfies ServerConfigShape);
     const infrastructureLayer = providerLayer.pipe(Layer.provideMerge(persistenceLayer));
     const runtimeOverrides = Layer.mergeAll(

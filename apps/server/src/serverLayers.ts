@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { Effect, FileSystem, Layer } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
@@ -16,10 +17,13 @@ import { OrchestrationProjectionPipelineLive } from "./orchestration/Layers/Proj
 import { OrchestrationProjectionSnapshotQueryLive } from "./orchestration/Layers/ProjectionSnapshotQuery";
 import { ProviderRuntimeIngestionLive } from "./orchestration/Layers/ProviderRuntimeIngestion";
 import { RuntimeReceiptBusLive } from "./orchestration/Layers/RuntimeReceiptBus";
-import { ProviderUnsupportedError } from "./provider/Errors";
+import { ProviderUnsupportedError, type ProviderAdapterError } from "./provider/Errors";
 import { makeClaudeAdapterLive } from "./provider/Layers/ClaudeAdapter";
 import { makeCodexAdapterLive } from "./provider/Layers/CodexAdapter";
+import { makeHarnessClientAdapterLive } from "./provider/Layers/HarnessClientAdapter";
+import { HarnessClientAdapter } from "./provider/Services/HarnessClientAdapter";
 import { ProviderAdapterRegistryLive } from "./provider/Layers/ProviderAdapterRegistry";
+import { ProviderAdapterRegistry } from "./provider/Services/ProviderAdapterRegistry";
 import { makeProviderServiceLive } from "./provider/Layers/ProviderService";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory";
 import { ProviderService } from "./provider/Services/ProviderService";
@@ -61,6 +65,59 @@ export function makeServerProviderLayer(): Layer.Layer<
     const adapterRegistryLayer = ProviderAdapterRegistryLive.pipe(
       Layer.provide(codexAdapterLayer),
       Layer.provide(claudeAdapterLayer),
+      Layer.provideMerge(providerSessionDirectoryLayer),
+    );
+    return makeProviderServiceLive(
+      canonicalEventLogger ? { canonicalEventLogger } : undefined,
+    ).pipe(Layer.provide(adapterRegistryLayer), Layer.provide(providerSessionDirectoryLayer));
+  }).pipe(Layer.unwrap);
+}
+
+/**
+ * Provider layer backed by the Elixir HarnessService.
+ * Uses HarnessClientAdapter which connects to the Elixir WS server
+ * for provider session management (Codex, Claude, OpenCode).
+ */
+export function makeHarnessProviderLayer() {
+  return Effect.gen(function* () {
+    const { stateDir } = yield* ServerConfig;
+    const providerLogsDir = path.join(stateDir, "logs", "provider");
+    const providerEventLogPath = path.join(providerLogsDir, "events.log");
+    const canonicalEventLogger = yield* makeEventNdjsonLogger(providerEventLogPath, {
+      stream: "canonical",
+    });
+    const providerSessionDirectoryLayer = ProviderSessionDirectoryLive.pipe(
+      Layer.provide(ProviderSessionRuntimeRepositoryLive),
+    );
+    // The harness adapter bridges all providers through Elixir.
+    // It implements ProviderAdapterShape for all provider kinds.
+    const harnessAdapterLayer = makeHarnessClientAdapterLive();
+    // Create provider-specific facades that share the same harness manager
+    // but report different `provider` values to the ProviderService.
+    const HARNESS_PROVIDERS = ["codex", "claudeAgent", "cursor", "opencode"] as const;
+    const adapterRegistryLayer = Layer.effect(
+      ProviderAdapterRegistry,
+      Effect.gen(function* () {
+        const baseAdapter = yield* HarnessClientAdapter;
+        const byProvider = new Map(
+          HARNESS_PROVIDERS.map((providerKind) => [
+            providerKind,
+            { ...baseAdapter, provider: providerKind } as typeof baseAdapter,
+          ]),
+        );
+        return {
+          getByProvider: (provider) => {
+            const adapter = byProvider.get(provider as (typeof HARNESS_PROVIDERS)[number]);
+            if (!adapter) {
+              return Effect.fail(new ProviderUnsupportedError({ provider }));
+            }
+            return Effect.succeed(adapter);
+          },
+          listProviders: () => Effect.sync(() => [...HARNESS_PROVIDERS]),
+        };
+      }),
+    ).pipe(
+      Layer.provide(harnessAdapterLayer),
       Layer.provideMerge(providerSessionDirectoryLayer),
     );
     return makeProviderServiceLive(

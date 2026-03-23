@@ -859,8 +859,40 @@ const make = Effect.gen(function* () {
   const processRuntimeEvent = (event: ProviderRuntimeEvent) =>
     Effect.gen(function* () {
       const readModel = yield* orchestrationEngine.getReadModel();
-      const thread = readModel.threads.find((entry) => entry.id === event.threadId);
-      if (!thread) return;
+      let thread = readModel.threads.find((entry) => entry.id === event.threadId);
+      if (!thread) {
+        // KI-1 fix: Thread may not be in the read model yet if the provider
+        // emits events before the thread creation command is fully projected.
+        // This is common with the harness adapter (async WebSocket) but not
+        // with direct adapters (sync in-process). Wait briefly for projection
+        // to catch up, then create a minimal thread if still missing.
+        if (
+          event.type === "session.started" ||
+          event.type === "session.state.changed" ||
+          event.type === "thread.started"
+        ) {
+          yield* Effect.sleep("150 millis");
+          const retryReadModel = yield* orchestrationEngine.getReadModel();
+          thread = retryReadModel.threads.find((entry) => entry.id === event.threadId);
+          if (!thread) {
+            yield* Effect.logWarning(
+              `Thread '${event.threadId}' not found for ${event.type} event from provider '${event.provider}'. ` +
+              `Creating minimal thread to prevent event loss.`,
+            );
+            yield* orchestrationEngine.dispatch({
+              type: "thread.create",
+              commandId: `auto-create-${event.threadId}-${Date.now()}`,
+              threadId: event.threadId,
+              provider: event.provider,
+              model: (event.payload as Record<string, unknown>)?.model as string | undefined,
+              createdAt: event.createdAt,
+            });
+            const postCreateReadModel = yield* orchestrationEngine.getReadModel();
+            thread = postCreateReadModel.threads.find((entry) => entry.id === event.threadId);
+          }
+        }
+        if (!thread) return;
+      }
 
       const now = event.createdAt;
       const eventTurnId = toTurnId(event.turnId);

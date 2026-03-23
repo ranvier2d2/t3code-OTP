@@ -31,6 +31,8 @@ export type ProviderCustomModelConfig = {
 const BUILT_IN_MODEL_SLUGS_BY_PROVIDER: Record<ProviderKind, ReadonlySet<string>> = {
   codex: new Set(getModelOptions("codex").map((option) => option.slug)),
   claudeAgent: new Set(getModelOptions("claudeAgent").map((option) => option.slug)),
+  cursor: new Set(getModelOptions("cursor").map((option) => option.slug)),
+  opencode: new Set(getModelOptions("opencode").map((option) => option.slug)),
 };
 
 const withDefaults =
@@ -128,22 +130,34 @@ export function getCustomModelsForProvider(
   settings: Pick<AppSettings, CustomModelSettingsKey>,
   provider: ProviderKind,
 ): readonly string[] {
-  return settings[PROVIDER_CUSTOM_MODEL_CONFIG[provider].settingsKey];
+  const config = PROVIDER_CUSTOM_MODEL_CONFIG[provider];
+  if (!config) {
+    return [];
+  }
+  return settings[config.settingsKey];
 }
 
 export function getDefaultCustomModelsForProvider(
   defaults: Pick<AppSettings, CustomModelSettingsKey>,
   provider: ProviderKind,
 ): readonly string[] {
-  return defaults[PROVIDER_CUSTOM_MODEL_CONFIG[provider].defaultSettingsKey];
+  const config = PROVIDER_CUSTOM_MODEL_CONFIG[provider];
+  if (!config) {
+    return [];
+  }
+  return defaults[config.defaultSettingsKey];
 }
 
 export function patchCustomModels(
   provider: ProviderKind,
   models: string[],
 ): Partial<Pick<AppSettings, CustomModelSettingsKey>> {
+  const config = PROVIDER_CUSTOM_MODEL_CONFIG[provider];
+  if (!config) {
+    return {};
+  }
   return {
-    [PROVIDER_CUSTOM_MODEL_CONFIG[provider].settingsKey]: models,
+    [config.settingsKey]: models,
   };
 }
 
@@ -153,6 +167,8 @@ export function getCustomModelsByProvider(
   return {
     codex: getCustomModelsForProvider(settings, "codex"),
     claudeAgent: getCustomModelsForProvider(settings, "claudeAgent"),
+    cursor: [],
+    opencode: [],
   };
 }
 
@@ -213,11 +229,36 @@ export function resolveAppModelSelection(
 
 export function getCustomModelOptionsByProvider(
   settings: Pick<AppSettings, CustomModelSettingsKey>,
+  discoveredModels?: Partial<Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>>>,
 ): Record<ProviderKind, ReadonlyArray<{ slug: string; name: string }>> {
   const customModelsByProvider = getCustomModelsByProvider(settings);
+
+  // Merge discovered models (from provider CLI) as additional options.
+  // Discovered models are placed after built-in but before user custom models.
+  const mergeDiscovered = (
+    provider: ProviderKind,
+    customModels: readonly string[],
+  ): ReadonlyArray<{ slug: string; name: string }> => {
+    const builtInAndCustom = getAppModelOptions(provider, customModels);
+    const discovered = discoveredModels?.[provider] ?? [];
+    if (discovered.length === 0) return builtInAndCustom;
+
+    // Filter out discovered models that are already in built-in or custom
+    const existingSlugs = new Set(builtInAndCustom.map((m) => m.slug));
+    const newDiscovered = discovered.filter((m) => !existingSlugs.has(m.slug));
+    if (newDiscovered.length === 0) return builtInAndCustom;
+
+    // Insert discovered models after built-in, before custom
+    const builtIn = builtInAndCustom.filter((m) => !("isCustom" in m && (m as AppModelOption).isCustom));
+    const custom = builtInAndCustom.filter((m) => "isCustom" in m && (m as AppModelOption).isCustom);
+    return [...builtIn, ...newDiscovered, ...custom];
+  };
+
   return {
-    codex: getAppModelOptions("codex", customModelsByProvider.codex),
-    claudeAgent: getAppModelOptions("claudeAgent", customModelsByProvider.claudeAgent),
+    codex: mergeDiscovered("codex", customModelsByProvider.codex),
+    claudeAgent: mergeDiscovered("claudeAgent", customModelsByProvider.claudeAgent),
+    cursor: mergeDiscovered("cursor", customModelsByProvider.cursor ?? []),
+    opencode: mergeDiscovered("opencode", customModelsByProvider.opencode ?? []),
   };
 }
 

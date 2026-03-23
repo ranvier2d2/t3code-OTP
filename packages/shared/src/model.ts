@@ -18,6 +18,8 @@ import {
 const MODEL_SLUG_SET_BY_PROVIDER: Record<ProviderKind, ReadonlySet<ModelSlug>> = {
   claudeAgent: new Set(MODEL_OPTIONS_BY_PROVIDER.claudeAgent.map((option) => option.slug)),
   codex: new Set(MODEL_OPTIONS_BY_PROVIDER.codex.map((option) => option.slug)),
+  cursor: new Set(MODEL_OPTIONS_BY_PROVIDER.cursor.map((option) => option.slug)),
+  opencode: new Set(MODEL_OPTIONS_BY_PROVIDER.opencode.map((option) => option.slug)),
 };
 
 const CLAUDE_OPUS_4_6_MODEL = "claude-opus-4-6";
@@ -124,6 +126,12 @@ export function resolveModelSlug(
     return DEFAULT_MODEL_BY_PROVIDER[provider];
   }
 
+  // Cursor and OpenCode use dynamic model discovery — pass through any
+  // normalized slug without falling back to the default.
+  if (provider === "cursor" || provider === "opencode") {
+    return normalized;
+  }
+
   return MODEL_SLUG_SET_BY_PROVIDER[provider].has(normalized)
     ? normalized
     : DEFAULT_MODEL_BY_PROVIDER[provider];
@@ -148,6 +156,16 @@ export function inferProviderForModel(
   const normalizedCodex = normalizeModelSlug(model, "codex");
   if (normalizedCodex && MODEL_SLUG_SET_BY_PROVIDER.codex.has(normalizedCodex)) {
     return "codex";
+  }
+
+  const normalizedCursor = normalizeModelSlug(model, "cursor");
+  if (normalizedCursor && MODEL_SLUG_SET_BY_PROVIDER.cursor.has(normalizedCursor)) {
+    return "cursor";
+  }
+
+  const normalizedOpencode = normalizeModelSlug(model, "opencode");
+  if (normalizedOpencode && MODEL_SLUG_SET_BY_PROVIDER.opencode.has(normalizedOpencode)) {
+    return "opencode";
   }
 
   return typeof model === "string" && model.trim().startsWith("claude-") ? "claudeAgent" : fallback;
@@ -180,10 +198,10 @@ export function getReasoningEffortOptions(
 
 export function getDefaultReasoningEffort(provider: "codex"): CodexReasoningEffort;
 export function getDefaultReasoningEffort(provider: "claudeAgent"): ClaudeCodeEffort;
-export function getDefaultReasoningEffort(provider?: ProviderKind): ProviderReasoningEffort;
+export function getDefaultReasoningEffort(provider?: ProviderKind): ProviderReasoningEffort | undefined;
 export function getDefaultReasoningEffort(
   provider: ProviderKind = "codex",
-): ProviderReasoningEffort {
+): ProviderReasoningEffort | undefined {
   return DEFAULT_REASONING_EFFORT_BY_PROVIDER[provider];
 }
 

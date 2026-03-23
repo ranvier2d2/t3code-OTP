@@ -1,0 +1,75 @@
+[workspace]
+name = "t3code"
+version = "0.0.13"
+description = "Multi-provider AI coding agent with Elixir harness + Node intelligence layer"
+channels = ["conda-forge"]
+platforms = ["osx-arm64", "osx-64", "linux-64", "linux-aarch64"]
+
+[dependencies]
+# BEAM runtime (Elixir harness)
+erlang = ">=28"
+# NOTE: elixir is not yet on conda-forge for osx-arm64 (only linux-64).
+# Install elixir separately via: brew install elixir OR asdf install elixir
+# Once conda-forge adds osx-arm64 support, uncomment:
+# elixir = ">=1.19"
+
+# Node runtime (intelligence + UI layer)
+nodejs = ">=25"
+
+# Build tools
+git = ">=2.40"
+
+[tasks]
+# ── Setup ──────────────────────────────────────────────────────────
+setup = { cmd = "bun install && cd apps/harness && mix deps.get", description = "Install all dependencies (npm + hex)" }
+
+# ── Development ────────────────────────────────────────────────────
+dev = { cmd = "./scripts/dev-harness.sh", description = "Start full stack: Elixir harness + Node server + Vite" }
+dev-server = { cmd = "bun run dev:server", description = "Start Node server only" }
+dev-web = { cmd = "bun run dev:web", description = "Start Vite dev server only" }
+harness = { cmd = "cd apps/harness && T3CODE_HARNESS_PORT=4321 T3CODE_HARNESS_SECRET=dev-harness-secret mix phx.server", description = "Start Elixir harness only" }
+harness-bg = { cmd = "./apps/harness/bin/harness start-bg", description = "Start harness in background" }
+
+# ── Testing ────────────────────────────────────────────────────────
+test = { cmd = "bun run test", description = "Run all TypeScript tests" }
+test-elixir = { cmd = "cd apps/harness && mix test", description = "Run Elixir tests" }
+typecheck = { cmd = "bun run typecheck", description = "TypeScript type check" }
+
+# ── Elixir quality ─────────────────────────────────────────────────
+credo = { cmd = "cd apps/harness && mix credo", description = "Run Elixir linter" }
+format-check = { cmd = "cd apps/harness && mix format --check-formatted", description = "Check Elixir formatting" }
+precommit-elixir = { cmd = "cd apps/harness && mix precommit", description = "Run all Elixir checks" }
+
+# ── Stress tests ───────────────────────────────────────────────────
+stress-gc = { cmd = "bun run scripts/stress-test-gc-lab-elixir.ts", description = "GC lab test (requires harness)" }
+stress-leak = { cmd = "bun run scripts/stress-test-memory-leak.ts --runtime=elixir", description = "Memory leak simulation" }
+stress-scale = { cmd = "bun run scripts/stress-test-scale50.ts --runtime=elixir", description = "50-session scale test" }
+stress-subagent = { cmd = "bun run scripts/stress-test-real-subagent.ts --runtime=elixir --sessions=2", description = "Real Codex subagent test" }
+stress-analyze = { cmd = "bun run scripts/stress-test-analyze.ts", description = "Regenerate analysis from JSON results" }
+viz = { cmd = "/tmp/viz-env/bin/python3 output/stress-test/viz.py && /tmp/viz-env/bin/python3 output/stress-test/viz-real.py", description = "Generate all charts" }
+
+# ── Desktop (Electron) ─────────────────────────────────────────────
+dev-desktop = { cmd = "./scripts/dev-harness.sh & sleep 10 && cd apps/desktop && ELECTRON_RENDERER_PORT=5734 bun run dev", description = "Full desktop: Elixir harness + Electron (shares Vite from dev-harness)" }
+build-desktop = { cmd = "bun run build:desktop", description = "Build desktop artifacts" }
+dist-dmg = { cmd = "bun run dist:desktop:dmg:arm64", description = "Build macOS arm64 DMG" }
+
+# ── Utilities ──────────────────────────────────────────────────────
+harness-status = { cmd = "curl -s http://127.0.0.1:4321/api/metrics | python3 -c \"import sys,json;d=json.load(sys.stdin);b=d['beam'];print(f'BEAM: {b[\\\"process_count\\\"]} procs, {b[\\\"total_memory\\\"]//1048576}MB');[print(f'  [{s[\\\"provider\\\"]:12}] {s[\\\"thread_id\\\"][:30]}... mem={s[\\\"memory\\\"]/1024:.0f}KB') for s in d.get('sessions',[])]\"", description = "Show harness session status" }
+kill-all = { cmd = "kill $(lsof -ti:4321) 2>/dev/null; kill $(lsof -ti:3780) 2>/dev/null; kill $(lsof -ti:5734) 2>/dev/null; echo 'All ports cleared'", description = "Kill stale processes on dev ports" }
+
+# ── Bun (not in conda-forge, install separately) ───────────────────
+install-bun = { cmd = "curl -fsSL https://bun.sh/install | bash", description = "Install bun if not present" }
+
+[feature.viz.dependencies]
+# Python data science stack for chart generation
+python = ">=3.12"
+matplotlib = ">=3.9"
+numpy = ">=2.0"
+seaborn = ">=0.13"
+
+[feature.viz.tasks]
+viz = { cmd = "python output/stress-test/viz.py && python output/stress-test/viz-real.py", description = "Generate all charts (uses pixi python)" }
+
+[environments]
+default = { features = [], solve-group = "default" }
+viz = { features = ["viz"], solve-group = "default" }

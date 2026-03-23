@@ -106,8 +106,19 @@ const composerProviderRegistry: Record<ProviderKind, ProviderRegistryEntry> = {
   },
 };
 
+const defaultProviderEntry: ProviderRegistryEntry = {
+  getState: ({ provider }) => ({
+    provider,
+    promptEffort: null,
+    modelOptionsForDispatch: undefined,
+  }),
+  renderTraitsMenuContent: () => null,
+  renderTraitsPicker: () => null,
+};
+
 export function getComposerProviderState(input: ComposerProviderStateInput): ComposerProviderState {
-  return composerProviderRegistry[input.provider].getState(input);
+  const entry = composerProviderRegistry[input.provider] ?? defaultProviderEntry;
+  return entry.getState(input);
 }
 
 export function renderProviderTraitsMenuContent(input: {
@@ -116,7 +127,8 @@ export function renderProviderTraitsMenuContent(input: {
   model: ModelSlug;
   onPromptChange: (prompt: string) => void;
 }): ReactNode {
-  return composerProviderRegistry[input.provider].renderTraitsMenuContent({
+  const entry = composerProviderRegistry[input.provider] ?? defaultProviderEntry;
+  return entry.renderTraitsMenuContent({
     threadId: input.threadId,
     model: input.model,
     onPromptChange: input.onPromptChange,
@@ -129,7 +141,8 @@ export function renderProviderTraitsPicker(input: {
   model: ModelSlug;
   onPromptChange: (prompt: string) => void;
 }): ReactNode {
-  return composerProviderRegistry[input.provider].renderTraitsPicker({
+  const entry = composerProviderRegistry[input.provider] ?? defaultProviderEntry;
+  return entry.renderTraitsPicker({
     threadId: input.threadId,
     model: input.model,
     onPromptChange: input.onPromptChange,

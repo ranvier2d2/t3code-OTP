@@ -20,7 +20,11 @@ import {
 import { fixPath, resolveBaseDir } from "./os-jank";
 import { Open } from "./open";
 import * as SqlitePersistence from "./persistence/Layers/Sqlite";
-import { makeServerProviderLayer, makeServerRuntimeServicesLayer } from "./serverLayers";
+import {
+  makeServerProviderLayer,
+  makeHarnessProviderLayer,
+  makeServerRuntimeServicesLayer,
+} from "./serverLayers";
 import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery";
 import { ProviderHealthLive } from "./provider/Layers/ProviderHealth";
 import { Server } from "./wsServer";
@@ -118,6 +122,14 @@ const CliEnvConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
+  harnessPort: Config.port("T3CODE_HARNESS_PORT").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  harnessSecret: Config.string("T3CODE_HARNESS_SECRET").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
 });
 
 const resolveBooleanFlag = (flag: Option.Option<boolean>, envValue: boolean) =>
@@ -183,22 +195,32 @@ const ServerConfigLive = (input: CliInput) =>
         authToken,
         autoBootstrapProjectFromCwd,
         logWebSocketEvents,
+        harnessPort: env.harnessPort,
+        harnessSecret: env.harnessSecret,
       } satisfies ServerConfigShape;
 
       return config;
     }),
   );
 
-const LayerLive = (input: CliInput) =>
-  Layer.empty.pipe(
+const LayerLive = (input: CliInput) => {
+  // Use Elixir HarnessService when T3CODE_HARNESS_PORT is configured,
+  // otherwise fall back to direct Codex-only provider layer
+  const providerLayer =
+    process.env.T3CODE_HARNESS_PORT !== undefined
+      ? makeHarnessProviderLayer()
+      : makeServerProviderLayer();
+
+  return Layer.empty.pipe(
     Layer.provideMerge(makeServerRuntimeServicesLayer()),
-    Layer.provideMerge(makeServerProviderLayer()),
+    Layer.provideMerge(providerLayer),
     Layer.provideMerge(ProviderHealthLive),
     Layer.provideMerge(SqlitePersistence.layerConfig),
     Layer.provideMerge(ServerLoggerLive),
     Layer.provideMerge(AnalyticsServiceLayerLive),
     Layer.provideMerge(ServerConfigLive(input)),
   );
+};
 
 const isWildcardHost = (host: string | undefined): boolean =>
   host === "0.0.0.0" || host === "::" || host === "[::]";
@@ -257,7 +279,7 @@ const makeServerProgram = (input: CliInput) =>
       config.host && !isWildcardHost(config.host)
         ? `http://${formatHostForUrl(config.host)}:${config.port}`
         : localUrl;
-    const { authToken, devUrl, ...safeConfig } = config;
+    const { authToken, harnessSecret: _harnessSecret, devUrl, ...safeConfig } = config;
     yield* Effect.logInfo("T3 Code running", {
       ...safeConfig,
       devUrl: devUrl?.toString(),

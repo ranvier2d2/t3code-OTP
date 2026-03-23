@@ -1,0 +1,443 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ─── Harness CLI ────────────────────────────────────────────────────
+# Reusable script for running the Elixir HarnessService locally.
+# Usage: ./apps/harness/bin/harness <command> [options]
+# ────────────────────────────────────────────────────────────────────
+
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+DEFAULT_PORT=4321
+DEFAULT_SECRET="dev-harness-secret"
+PORT="${T3CODE_HARNESS_PORT:-$DEFAULT_PORT}"
+SECRET="${T3CODE_HARNESS_SECRET:-$DEFAULT_SECRET}"
+BASE_URL="http://127.0.0.1:$PORT"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+log()  { echo -e "${BLUE}[harness]${NC} $*"; }
+ok()   { echo -e "${GREEN}  ✓${NC} $*"; }
+fail() { echo -e "${RED}  ✗${NC} $*"; }
+warn() { echo -e "${YELLOW}  ⚠${NC} $*"; }
+step() { echo -e "${BOLD}── $* ──${NC}"; }
+
+# ─── Help ───────────────────────────────────────────────────────────
+
+usage() {
+  cat <<EOF
+${BOLD}Harness CLI${NC} — local dev tool for the Elixir HarnessService
+
+${BOLD}Usage:${NC}
+  ./apps/harness/bin/harness <command> [options]
+
+${BOLD}Commands:${NC}
+  ${GREEN}start${NC}         Start the HarnessService (foreground)
+  ${GREEN}start-bg${NC}      Start the HarnessService (background, returns when ready)
+  ${GREEN}stop${NC}          Stop the background HarnessService
+  ${GREEN}status${NC}        Check if HarnessService is running
+  ${GREEN}check-deps${NC}    Verify all provider binaries are installed
+  ${GREEN}test${NC}          Run Elixir unit tests (mix test)
+  ${GREEN}test-live${NC}     Run live E2E tests against running harness
+  ${GREEN}dry-run${NC}       Full dry-run: start harness, test all providers, stop
+  ${GREEN}session${NC}       Manage sessions interactively
+  ${GREEN}snapshot${NC}      Get current HarnessSnapshot
+  ${GREEN}compile${NC}       Compile the Elixir app
+
+${BOLD}Session subcommands:${NC}
+  session list                       List active sessions
+  session start <provider> [cwd]     Start a session (codex|claudeAgent|opencode|cursor)
+  session stop <thread-id>           Stop a session
+  session stop-all                   Stop all sessions
+
+${BOLD}Environment:${NC}
+  T3CODE_HARNESS_PORT    Port for harness WS server (default: $DEFAULT_PORT)
+  T3CODE_HARNESS_SECRET  Auth secret (default: $DEFAULT_SECRET)
+
+${BOLD}Examples:${NC}
+  ./apps/harness/bin/harness dry-run          # Full test of all providers
+  ./apps/harness/bin/harness start-bg         # Start in background
+  ./apps/harness/bin/harness session start opencode /tmp/myproject
+  ./apps/harness/bin/harness snapshot
+  ./apps/harness/bin/harness stop
+EOF
+}
+
+# ─── Helpers ────────────────────────────────────────────────────────
+
+require_running() {
+  if ! curl -s "$BASE_URL/" > /dev/null 2>&1; then
+    fail "HarnessService not running on port $PORT"
+    echo "  Run: ./apps/harness/bin/harness start-bg"
+    exit 1
+  fi
+}
+
+wait_for_ready() {
+  local max_wait="${1:-30}"
+  local i=0
+  while [ $i -lt "$max_wait" ]; do
+    if curl -s "$BASE_URL/" > /dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+    i=$((i + 1))
+  done
+  return 1
+}
+
+get_pid() {
+  lsof -ti:"$PORT" 2>/dev/null | head -1
+}
+
+# Run an Elixir expression (starts a fresh app — use for offline tasks only)
+run_elixir() {
+  cd "$SCRIPT_DIR" && \
+    T3CODE_HARNESS_PORT="$PORT" T3CODE_HARNESS_SECRET="$SECRET" \
+    mix run -e "$1" 2>&1
+}
+
+# Connect to the running harness via a temporary Elixir node
+# that remsh's into the running app (requires distributed Erlang)
+run_against_harness() {
+  # Use a short-lived mix run that connects to the running harness
+  # via its PubSub. This only works for read operations.
+  cd "$SCRIPT_DIR" && \
+    T3CODE_HARNESS_PORT="$PORT" T3CODE_HARNESS_SECRET="$SECRET" \
+    timeout 15 mix run -e "$1" 2>&1 || true
+}
+
+# ─── Commands ───────────────────────────────────────────────────────
+
+cmd_compile() {
+  step "Compiling Elixir harness"
+  cd "$SCRIPT_DIR" && mix compile 2>&1
+  if [ $? -eq 0 ]; then
+    ok "Compiled successfully"
+  else
+    fail "Compilation failed"
+    exit 1
+  fi
+}
+
+cmd_test() {
+  step "Running Elixir tests"
+  cd "$SCRIPT_DIR" && mix test 2>&1
+}
+
+cmd_check_deps() {
+  step "Checking provider binaries"
+
+  local all_ok=true
+
+  for bin_name in codex claude agent opencode; do
+    local path
+    path=$(which "$bin_name" 2>/dev/null || true)
+    if [ -n "$path" ]; then
+      ok "$bin_name → $path"
+    else
+      fail "$bin_name not found in PATH"
+      all_ok=false
+    fi
+  done
+
+  # Check Elixir/Mix
+  local elixir_path
+  elixir_path=$(which elixir 2>/dev/null || true)
+  if [ -n "$elixir_path" ]; then
+    ok "elixir → $elixir_path ($(elixir --version 2>&1 | tail -1))"
+  else
+    fail "elixir not found in PATH"
+    all_ok=false
+  fi
+
+  if [ "$all_ok" = true ]; then
+    ok "All dependencies available"
+  else
+    warn "Some binaries missing — affected providers will fail to start"
+  fi
+}
+
+cmd_start() {
+  step "Starting HarnessService on port $PORT"
+  cd "$SCRIPT_DIR" && \
+    T3CODE_HARNESS_PORT="$PORT" T3CODE_HARNESS_SECRET="$SECRET" \
+    mix phx.server
+}
+
+cmd_start_bg() {
+  # Check if already running
+  if curl -s "$BASE_URL/" > /dev/null 2>&1; then
+    ok "HarnessService already running on port $PORT"
+    return 0
+  fi
+
+  step "Starting HarnessService in background (port $PORT)"
+  cd "$SCRIPT_DIR" && \
+    T3CODE_HARNESS_PORT="$PORT" T3CODE_HARNESS_SECRET="$SECRET" \
+    mix phx.server > /tmp/harness-$PORT.log 2>&1 &
+
+  log "Waiting for server to be ready..."
+  if wait_for_ready 15; then
+    ok "HarnessService running (PID: $(get_pid), log: /tmp/harness-$PORT.log)"
+  else
+    fail "HarnessService failed to start within 15s"
+    echo "  Check log: /tmp/harness-$PORT.log"
+    tail -20 "/tmp/harness-$PORT.log" 2>/dev/null
+    exit 1
+  fi
+}
+
+cmd_stop() {
+  local pid
+  pid=$(get_pid)
+  if [ -n "$pid" ]; then
+    step "Stopping HarnessService (PID: $pid)"
+    kill "$pid" 2>/dev/null
+    sleep 1
+    # Force kill if still running
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -9 "$pid" 2>/dev/null
+    fi
+    ok "Stopped"
+  else
+    warn "HarnessService not running on port $PORT"
+  fi
+}
+
+cmd_status() {
+  if curl -s "$BASE_URL/" > /dev/null 2>&1; then
+    local pid
+    pid=$(get_pid)
+    ok "HarnessService running on port $PORT (PID: ${pid:-unknown})"
+  else
+    fail "HarnessService not running on port $PORT"
+  fi
+}
+
+cmd_snapshot() {
+  require_running
+  step "Current HarnessSnapshot"
+  curl -s "$BASE_URL/api/snapshot" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+print(f\"  Sequence: {d.get('sequence', 0)}\")
+sessions = d.get('sessions', {})
+print(f\"  Sessions: {len(sessions)}\")
+for tid, s in sessions.items():
+  print(f\"    {tid}: {s.get('status', '?')} ({s.get('provider', '?')})\")
+" 2>/dev/null
+}
+
+cmd_session() {
+  local subcmd="${1:-list}"
+  shift || true
+
+  case "$subcmd" in
+    list)
+      require_running
+      step "Active sessions"
+      curl -s "$BASE_URL/api/session/list" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+sessions = d.get('sessions', [])
+if not sessions:
+  print('  (no active sessions)')
+else:
+  for s in sessions:
+    print(f\"  {s.get('threadId', '?')} ({s.get('provider', '?')})\")
+" 2>/dev/null
+      ;;
+
+    start)
+      require_running
+      local provider="${1:?Usage: session start <provider> [cwd]}"
+      local cwd="${2:-$(pwd)}"
+      local thread_id="$provider-$(date +%s)"
+      step "Starting $provider session (thread: $thread_id, cwd: $cwd)"
+      curl -s -X POST "$BASE_URL/api/session/start" \
+        -H "Content-Type: application/json" \
+        -d "{\"threadId\":\"$thread_id\",\"provider\":\"$provider\",\"cwd\":\"$cwd\"}" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+if d.get('ok'):
+  print(f\"  Session started: {json.dumps(d.get('session', {}))}\")
+else:
+  print(f\"  Error: {d.get('error', 'unknown')}\")
+" 2>/dev/null
+      ;;
+
+    stop)
+      require_running
+      local thread_id="${1:?Usage: session stop <thread-id>}"
+      step "Stopping session $thread_id"
+      curl -s -X POST "$BASE_URL/api/session/stop" \
+        -H "Content-Type: application/json" \
+        -d "{\"threadId\":\"$thread_id\"}" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+if d.get('ok'):
+  print('  Stopped')
+else:
+  print(f\"  Error: {d.get('error', 'unknown')}\")
+" 2>/dev/null
+      ;;
+
+    stop-all)
+      require_running
+      step "Stopping all sessions"
+      curl -s -X POST "$BASE_URL/api/session/stop-all" > /dev/null 2>&1
+      ok "Done"
+      ;;
+
+    *)
+      fail "Unknown session subcommand: $subcmd"
+      echo "  Available: list, start, stop, stop-all"
+      exit 1
+      ;;
+  esac
+}
+
+cmd_dry_run() {
+  step "Dry-run: testing all providers"
+  echo ""
+
+  # 1. Check deps
+  cmd_check_deps
+  echo ""
+
+  # 2. Compile
+  cmd_compile
+  echo ""
+
+  # 3. Unit tests (only projector + snapshot — no live provider tests)
+  step "Running unit tests"
+  cd "$SCRIPT_DIR" && mix test test/harness/ 2>&1 | tail -5
+  echo ""
+
+  # 4. Start harness
+  cmd_start_bg
+  echo ""
+
+  # 5. Test each provider via HTTP API
+  local providers=("codex" "claudeAgent" "opencode" "cursor")
+  local provider_bins=("codex" "claude" "opencode" "agent")
+
+  for i in "${!providers[@]}"; do
+    local provider="${providers[$i]}"
+    local bin="${provider_bins[$i]}"
+
+    step "Testing provider: $provider"
+
+    # Check binary
+    if ! which "$bin" > /dev/null 2>&1; then
+      warn "$provider: binary '$bin' not found, skipping"
+      echo ""
+      continue
+    fi
+
+    local thread_id="dry-run-$provider-$$"
+
+    # Start session via HTTP
+    local start_result
+    start_result=$(curl -s -X POST "$BASE_URL/api/session/start" \
+      -H "Content-Type: application/json" \
+      -d "{\"threadId\":\"$thread_id\",\"provider\":\"$provider\",\"cwd\":\"/tmp\"}" 2>&1)
+
+    if echo "$start_result" | grep -q '"ok":true'; then
+      ok "$provider: session created"
+
+      # Wait for provider process to initialize
+      sleep 3
+
+      # Check snapshot via HTTP
+      local snapshot
+      snapshot=$(curl -s "$BASE_URL/api/snapshot" 2>&1)
+      local session_status
+      session_status=$(echo "$snapshot" | python3 -c "
+import json, sys
+try:
+  d = json.load(sys.stdin)
+  s = d.get('sessions', {}).get('$thread_id', {})
+  print(s.get('status', 'not_in_snapshot'))
+except: print('parse_error')
+" 2>/dev/null)
+
+      if [ -n "$session_status" ] && [ "$session_status" != "not_in_snapshot" ] && [ "$session_status" != "parse_error" ]; then
+        ok "$provider: snapshot status = $session_status"
+      else
+        warn "$provider: not yet in snapshot (may need more time)"
+      fi
+
+      # Stop session via HTTP
+      curl -s -X POST "$BASE_URL/api/session/stop" \
+        -H "Content-Type: application/json" \
+        -d "{\"threadId\":\"$thread_id\"}" > /dev/null 2>&1
+      ok "$provider: session stopped"
+    else
+      local error_msg
+      error_msg=$(echo "$start_result" | python3 -c "
+import json, sys
+try:
+  d = json.load(sys.stdin)
+  print(d.get('error', 'unknown error'))
+except: print(sys.stdin.read()[:100])
+" 2>/dev/null)
+      fail "$provider: session failed — $error_msg"
+    fi
+
+    echo ""
+  done
+
+  # 6. Final snapshot via HTTP
+  step "Final snapshot"
+  local final_snapshot
+  final_snapshot=$(curl -s "$BASE_URL/api/snapshot" 2>&1)
+  echo "$final_snapshot" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+print(f\"  Sequence: {d.get('sequence', 0)}\")
+sessions = d.get('sessions', {})
+print(f\"  Active sessions: {len(sessions)}\")
+for tid, s in sessions.items():
+  print(f\"    {tid}: {s.get('status', '?')} ({s.get('provider', '?')})\")
+" 2>/dev/null
+  echo ""
+
+  # 7. Stop harness
+  cmd_stop
+  echo ""
+
+  ok "Dry-run complete!"
+}
+
+# ─── Main ───────────────────────────────────────────────────────────
+
+command="${1:-help}"
+shift || true
+
+case "$command" in
+  start)      cmd_start ;;
+  start-bg)   cmd_start_bg ;;
+  stop)       cmd_stop ;;
+  status)     cmd_status ;;
+  check-deps) cmd_check_deps ;;
+  test)       cmd_test ;;
+  test-live)  cmd_dry_run ;;
+  dry-run)    cmd_dry_run ;;
+  session)    cmd_session "$@" ;;
+  snapshot)   cmd_snapshot ;;
+  compile)    cmd_compile ;;
+  help|--help|-h)  usage ;;
+  *)
+    fail "Unknown command: $command"
+    echo ""
+    usage
+    exit 1
+    ;;
+esac

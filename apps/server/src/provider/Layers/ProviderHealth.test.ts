@@ -9,7 +9,6 @@ import {
   checkCodexProviderStatus,
   hasCustomModelProvider,
   parseAuthStatusFromOutput,
-  parseClaudeAuthStatusFromOutput,
   readCodexConfigModelProvider,
 } from "./ProviderHealth";
 
@@ -598,17 +597,17 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
     );
   });
 
-  // ── parseClaudeAuthStatusFromOutput pure tests ────────────────────
+  // ── parseAuthStatusFromOutput pure tests ────────────────────
 
-  describe("parseClaudeAuthStatusFromOutput", () => {
+  describe("parseAuthStatusFromOutput", () => {
     it("exit code 0 with no auth markers is ready", () => {
-      const parsed = parseClaudeAuthStatusFromOutput({ stdout: "OK\n", stderr: "", code: 0 });
+      const parsed = parseAuthStatusFromOutput({ stdout: "OK\n", stderr: "", code: 0 });
       assert.strictEqual(parsed.status, "ready");
       assert.strictEqual(parsed.authStatus, "authenticated");
     });
 
     it("JSON with loggedIn=true is authenticated", () => {
-      const parsed = parseClaudeAuthStatusFromOutput({
+      const parsed = parseAuthStatusFromOutput({
         stdout: '{"loggedIn":true,"authMethod":"claude.ai"}\n',
         stderr: "",
         code: 0,
@@ -618,7 +617,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
     });
 
     it("JSON with loggedIn=false is unauthenticated", () => {
-      const parsed = parseClaudeAuthStatusFromOutput({
+      const parsed = parseAuthStatusFromOutput({
         stdout: '{"loggedIn":false}\n',
         stderr: "",
         code: 0,
@@ -628,7 +627,7 @@ it.layer(NodeServices.layer)("ProviderHealth", (it) => {
     });
 
     it("JSON without auth marker is warning", () => {
-      const parsed = parseClaudeAuthStatusFromOutput({
+      const parsed = parseAuthStatusFromOutput({
         stdout: '{"ok":true}\n',
         stderr: "",
         code: 0,

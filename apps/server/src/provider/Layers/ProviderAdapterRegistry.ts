@@ -51,3 +51,10 @@ export const ProviderAdapterRegistryLive = Layer.effect(
   ProviderAdapterRegistry,
   makeProviderAdapterRegistry(),
 );
+
+export function makeProviderAdapterRegistryLayer(
+  adapters: ReadonlyArray<ProviderAdapterShape<ProviderAdapterError>>,
+) {
+  return Layer.effect(ProviderAdapterRegistry, makeProviderAdapterRegistry({ adapters }));
+}
+

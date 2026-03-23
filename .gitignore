@@ -19,3 +19,12 @@ apps/web/playwright-report
 apps/web/src/components/__screenshots__
 .vitest-*
 __screenshots__/
+
+# Internal artifacts (not for public repo)
+.claude/
+output/
+hello.txt
+test-e2e.txt
+e2e-*.png
+codex-test-*.png
+.playwright-mcp/

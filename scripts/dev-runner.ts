@@ -11,6 +11,7 @@ import { ChildProcess } from "effect/unstable/process";
 
 const BASE_SERVER_PORT = 3773;
 const BASE_WEB_PORT = 5733;
+const BASE_HARNESS_PORT = 4383;
 const MAX_HASH_OFFSET = 3000;
 const MAX_PORT = 65535;
 
@@ -146,6 +147,7 @@ export function createDevRunnerEnv({
   return Effect.gen(function* () {
     const serverPort = port ?? BASE_SERVER_PORT + serverOffset;
     const webPort = BASE_WEB_PORT + webOffset;
+    const harnessPort = BASE_HARNESS_PORT + serverOffset;
     const resolvedBaseDir = yield* resolveBaseDir(t3Home);
 
     const output: NodeJS.ProcessEnv = {
@@ -157,6 +159,12 @@ export function createDevRunnerEnv({
       VITE_DEV_SERVER_URL: devUrl?.toString() ?? `http://localhost:${webPort}`,
       T3CODE_HOME: resolvedBaseDir,
     };
+
+    // Elixir HarnessService — opt-in via T3CODE_HARNESS_PORT env var
+    if (baseEnv.T3CODE_HARNESS_PORT !== undefined) {
+      output.T3CODE_HARNESS_PORT = baseEnv.T3CODE_HARNESS_PORT;
+      output.T3CODE_HARNESS_SECRET = baseEnv.T3CODE_HARNESS_SECRET ?? "dev-harness-secret";
+    }
 
     if (host !== undefined) {
       output.T3CODE_HOST = host;

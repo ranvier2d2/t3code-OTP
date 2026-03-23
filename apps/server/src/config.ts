@@ -44,6 +44,8 @@ export interface ServerConfigShape extends ServerDerivedPaths {
   readonly authToken: string | undefined;
   readonly autoBootstrapProjectFromCwd: boolean;
   readonly logWebSocketEvents: boolean;
+  readonly harnessPort: number | undefined;
+  readonly harnessSecret: string | undefined;
 }
 
 export const deriveServerPaths = Effect.fn(function* (
@@ -107,6 +109,8 @@ export class ServerConfig extends ServiceMap.Service<ServerConfig, ServerConfigS
           staticDir: undefined,
           devUrl,
           noBrowser: false,
+          harnessPort: undefined,
+          harnessSecret: undefined,
         } satisfies ServerConfigShape;
       }),
     );

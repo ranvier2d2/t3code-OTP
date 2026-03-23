@@ -26,7 +26,7 @@ import {
   ProviderCommandReactor,
   type ProviderCommandReactorShape,
 } from "../Services/ProviderCommandReactor.ts";
-import { inferProviderForModel } from "@t3tools/shared/model";
+import { inferProviderForModel, resolveModelSlugForProvider, getModelOptions, getDefaultModel } from "@t3tools/shared/model";
 
 type ProviderIntentEvent = Extract<
   OrchestrationEvent,
@@ -233,23 +233,47 @@ const make = Effect.gen(function* () {
     )
       ? thread.session.providerName
       : undefined;
-    const threadProvider: ProviderKind = currentProvider ?? inferProviderForModel(thread.model);
-    if (options?.provider !== undefined && options.provider !== threadProvider) {
+    const inferredProvider: ProviderKind = currentProvider ?? inferProviderForModel(thread.model);
+    // When there is an active session, the thread is bound to that provider.
+    // When there is NO active session (first turn or after session exit), the
+    // user's explicit provider choice takes precedence over the model-inferred one.
+    const threadProvider: ProviderKind =
+      currentProvider !== undefined
+        ? currentProvider
+        : options?.provider !== undefined
+          ? options.provider
+          : inferredProvider;
+    if (currentProvider !== undefined && options?.provider !== undefined && options.provider !== currentProvider) {
       return yield* new ProviderAdapterRequestError({
-        provider: threadProvider,
+        provider: currentProvider,
         method: "thread.turn.start",
-        detail: `Thread '${threadId}' is bound to provider '${threadProvider}' and cannot switch to '${options.provider}'.`,
+        detail: `Thread '${threadId}' is bound to provider '${currentProvider}' and cannot switch to '${options.provider}'.`,
       });
     }
     if (
       options?.model !== undefined &&
       inferProviderForModel(options.model, threadProvider) !== threadProvider
     ) {
-      return yield* new ProviderAdapterRequestError({
-        provider: threadProvider,
-        method: "thread.turn.start",
-        detail: `Model '${options.model}' does not belong to provider '${threadProvider}' for thread '${threadId}'.`,
-      });
+      // Cursor and OpenCode use dynamic model discovery — their available
+      // models are fetched from the CLI at runtime and aren't in the static
+      // MODEL_OPTIONS_BY_PROVIDER set. Accept any model string for these providers.
+      const providerUsesDynamicModels = threadProvider === "cursor" || threadProvider === "opencode";
+      if (!providerUsesDynamicModels) {
+        // Only reject if the model is truly foreign — not if it's ambiguous
+        // (e.g. "auto" exists in both cursor and opencode model sets).
+        const resolvedForThread = resolveModelSlugForProvider(threadProvider, options.model);
+        const modelSetForThread = getModelOptions(threadProvider).map((o) => o.slug);
+        const isKnownByThread = modelSetForThread.includes(options.model as typeof modelSetForThread[number]) ||
+          resolvedForThread !== getDefaultModel(threadProvider) ||
+          options.model === resolvedForThread;
+        if (!isKnownByThread) {
+          return yield* new ProviderAdapterRequestError({
+            provider: threadProvider,
+            method: "thread.turn.start",
+            detail: `Model '${options.model}' does not belong to provider '${threadProvider}' for thread '${threadId}'.`,
+          });
+        }
+      }
     }
     const preferredProvider: ProviderKind = currentProvider ?? threadProvider;
     const desiredModel = options?.model ?? thread.model;

@@ -656,7 +656,7 @@ const makeGitCore = Effect.gen(function* () {
 
   const statusDetails: GitCoreShape["statusDetails"] = (cwd) =>
     Effect.gen(function* () {
-      yield* refreshStatusUpstreamIfStale(cwd).pipe(Effect.ignoreCause({ log: true }));
+      yield* refreshStatusUpstreamIfStale(cwd).pipe(Effect.ignoreCause({ log: false }));
 
       const [statusStdout, unstagedNumstatStdout, stagedNumstatStdout] = yield* Effect.all(
         [
@@ -1377,7 +1377,7 @@ const makeGitCore = Effect.gen(function* () {
 
       // Refresh upstream refs in the background so checkout remains responsive.
       yield* Effect.forkScoped(
-        refreshCheckedOutBranchUpstream(input.cwd).pipe(Effect.ignoreCause({ log: true })),
+        refreshCheckedOutBranchUpstream(input.cwd).pipe(Effect.ignoreCause({ log: false })),
       );
     });
 
