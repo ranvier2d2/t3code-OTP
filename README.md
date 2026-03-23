@@ -1,5 +1,7 @@
 # T3Otp-Engine
 
+> **This is an independent, work-in-progress experiment.** It is NOT affiliated with, endorsed by, or approved by the T3Code team or [Ping.gg](https://ping.gg). This repository represents one developer's architectural exploration — nothing more. The T3Code team has their own roadmap and has made no commitments regarding OTP or Elixir.
+
 **An OTP supervision layer for multi-provider AI coding agents.**
 
 T3Otp-Engine is an Elixir/Phoenix harness that manages AI provider processes (Codex, Claude, Cursor, OpenCode) through a single supervised runtime. It connects to a host application via a Phoenix Channel WebSocket — the host owns orchestration, persistence, and UI; the engine owns provider lifecycle, crash isolation, and per-session memory containment.
