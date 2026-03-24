@@ -28,7 +28,6 @@ import {
   type ProviderTurnStartResult,
   type ProviderUserInputAnswers,
   type ItemLifecyclePayload,
-  type RuntimeTaskId,
   type ThreadId,
   type TurnId,
 } from "@t3tools/contracts";
@@ -672,16 +671,14 @@ function mapHarnessEventToRuntimeEvents(
   // Subagent lifecycle (OpenCode child sessions, Codex collaboration)
   // -------------------------------------------------------------------------
   if (event.method === "collab_agent_spawn_begin") {
-    const agentId = asString(payload?.agentId) ?? "";
     const agentName = asString(payload?.agentName) ?? "subagent";
     return [
       {
         ...runtimeEventBase(event, canonicalThreadId),
-        type: "task.started" as const,
+        type: "item.started" as const,
         payload: {
-          taskId: agentId as unknown as RuntimeTaskId,
-          description: agentName,
-          taskType: "subagent",
+          itemType: "collab_agent_tool_call" as ItemLifecyclePayload["itemType"],
+          ...(agentName ? { title: agentName } : {}),
         },
       },
     ];
