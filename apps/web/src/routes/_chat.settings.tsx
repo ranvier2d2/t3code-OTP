@@ -194,6 +194,8 @@ function SettingsRouteView() {
   const [openInstallProviders, setOpenInstallProviders] = useState<Record<ProviderKind, boolean>>({
     codex: Boolean(settings.codexBinaryPath || settings.codexHomePath),
     claudeAgent: Boolean(settings.claudeBinaryPath),
+    cursor: false,
+    opencode: false,
   });
   const [selectedCustomModelProvider, setSelectedCustomModelProvider] =
     useState<ProviderKind>("codex");
@@ -202,6 +204,8 @@ function SettingsRouteView() {
   >({
     codex: "",
     claudeAgent: "",
+    cursor: "",
+    opencode: "",
   });
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
     Partial<Record<ProviderKind, string | null>>
@@ -369,11 +373,15 @@ function SettingsRouteView() {
     setOpenInstallProviders({
       codex: false,
       claudeAgent: false,
+      cursor: false,
+      opencode: false,
     });
     setSelectedCustomModelProvider("codex");
     setCustomModelInputByProvider({
       codex: "",
       claudeAgent: "",
+      cursor: "",
+      opencode: "",
     });
     setCustomModelErrorByProvider({});
   }
@@ -790,6 +798,8 @@ function SettingsRouteView() {
                         setOpenInstallProviders({
                           codex: false,
                           claudeAgent: false,
+                          cursor: false,
+                          opencode: false,
                         });
                       }}
                     />

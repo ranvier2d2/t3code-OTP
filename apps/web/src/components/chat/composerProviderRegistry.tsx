@@ -47,7 +47,7 @@ type ProviderRegistryEntry = {
   }) => ReactNode;
 };
 
-const composerProviderRegistry: Record<ProviderKind, ProviderRegistryEntry> = {
+const composerProviderRegistry: Partial<Record<ProviderKind, ProviderRegistryEntry>> = {
   codex: {
     getState: ({ modelOptions }) => {
       const promptEffort =

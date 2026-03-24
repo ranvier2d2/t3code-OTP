@@ -885,8 +885,14 @@ const make = Effect.gen(function* () {
                 `auto-create-${event.threadId}:${crypto.randomUUID()}`,
               ),
               threadId: event.threadId,
-              provider: event.provider,
-              model: (event.payload as Record<string, unknown>)?.model as string | undefined,
+              projectId: "" as any,
+              title: "Auto-created" as any,
+              model: (((event.payload as Record<string, unknown>)?.model as string | undefined) ??
+                "unknown") as any,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: null,
               createdAt: event.createdAt,
             });
             // Allow projection pipeline to process the thread.create event

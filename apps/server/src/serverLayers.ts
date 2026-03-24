@@ -39,8 +39,6 @@ import { GitManagerLive } from "./git/Layers/GitManager";
 import { GitCoreLive } from "./git/Layers/GitCore";
 import { GitHubCliLive } from "./git/Layers/GitHubCli";
 import { CodexTextGenerationLive } from "./git/Layers/CodexTextGeneration";
-import { BunPtyAdapterLive } from "./terminal/Layers/BunPTY";
-import { NodePtyAdapterLive } from "./terminal/Layers/NodePTY";
 import { PtyAdapter } from "./terminal/Services/PTY";
 import { AnalyticsService } from "./telemetry/Services/AnalyticsService";
 
@@ -95,24 +93,24 @@ export function makeServerProviderLayer() {
     );
 
     // Harness adapters — only when harnessPort is configured
+    // Codex, Cursor, and OpenCode route through the Elixir harness.
+    // Claude always uses the Node SDK adapter (Agent SDK, not CLI).
     const harnessEnabled = serverConfig.harnessPort !== undefined;
-    const HARNESS_ONLY_PROVIDERS = ["cursor", "opencode"] as const;
+    const HARNESS_PROVIDERS = ["codex", "cursor", "opencode"] as const;
 
     const adapterRegistryLayer = harnessEnabled
       ? Layer.effect(
           ProviderAdapterRegistry,
           Effect.gen(function* () {
-            const codexAdapter = yield* CodexAdapter;
             const claudeAdapter = yield* ClaudeAdapter;
             const harnessBaseAdapter = yield* HarnessClientAdapter;
 
             type Adapter = ProviderAdapterShape<ProviderAdapterError>;
             const byProvider = new Map<string, Adapter>();
 
-            byProvider.set("codex", codexAdapter);
             byProvider.set("claudeAgent", claudeAdapter);
 
-            for (const providerKind of HARNESS_ONLY_PROVIDERS) {
+            for (const providerKind of HARNESS_PROVIDERS) {
               byProvider.set(providerKind, {
                 ...harnessBaseAdapter,
                 provider: providerKind,
@@ -134,7 +132,6 @@ export function makeServerProviderLayer() {
             };
           }),
         ).pipe(
-          Layer.provide(codexAdapterLayer),
           Layer.provide(claudeAdapterLayer),
           Layer.provide(makeHarnessClientAdapterLive()),
           Layer.provideMerge(providerSessionDirectoryLayer),

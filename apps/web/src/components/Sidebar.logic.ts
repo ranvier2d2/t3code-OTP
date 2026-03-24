@@ -124,7 +124,7 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
-  if (thread.session?.status === "connecting" || thread.session?.status === "starting") {
+  if (thread.session?.status === "connecting") {
     return {
       label: "Connecting",
       colorClass: "text-sky-600 dark:text-sky-300/80",

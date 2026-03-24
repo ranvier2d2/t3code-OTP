@@ -190,7 +190,7 @@ interface ComposerDraftStoreState {
   setProviderModelOptions: (
     threadId: ThreadId,
     provider: ProviderKind,
-    nextProviderOptions: ProviderModelOptions[ProviderKind] | null | undefined,
+    nextProviderOptions: ProviderModelOptions[keyof ProviderModelOptions] | null | undefined,
     options?: {
       persistSticky?: boolean;
     },
@@ -420,10 +420,12 @@ function normalizeProviderModelOptions(
 function replaceProviderModelOptions(
   currentModelOptions: ProviderModelOptions | null | undefined,
   provider: ProviderKind,
-  nextProviderOptions: ProviderModelOptions[ProviderKind] | null | undefined,
+  nextProviderOptions: ProviderModelOptions[keyof ProviderModelOptions] | null | undefined,
 ): ProviderModelOptions | null {
-  const { [provider]: _discardedProviderModelOptions, ...otherProviderModelOptions } =
-    currentModelOptions ?? {};
+  const {
+    [provider as keyof ProviderModelOptions]: _discardedProviderModelOptions,
+    ...otherProviderModelOptions
+  } = currentModelOptions ?? {};
   const normalizedNextProviderOptions = normalizeProviderModelOptions(
     { [provider]: nextProviderOptions },
     provider,
