@@ -21,6 +21,19 @@ defmodule Harness.Providers.OpenCodeSession do
   - message.updated, message.part.updated, message.part.delta, message.part.removed
   - permission.asked, permission.replied
   - server.connected, server.heartbeat
+
+  ## Subagent Support
+
+  OpenCode has a native agent/subagent architecture. Primary agents (Build, Plan)
+  can delegate to subagents (General, Explore, custom) which run in child sessions.
+
+  Handled subagent-related `message.part.updated` part types:
+  - `"subtask"` → emits `item/started` with `itemType: "collab_agent_tool_call"`
+  - `"agent"` → emits `session/state-changed` for agent switch tracking
+  - `"step-start"` / `"step-finish"` → emits `item/started` / `item/completed`
+
+  Child session tracking via `session.created` with `parentID`:
+  - Emits `collab_agent_spawn_begin` with parent→child linkage
   """
   use GenServer, restart: :temporary
 
@@ -762,6 +775,63 @@ defmodule Harness.Providers.OpenCodeSession do
         # Emitting again would duplicate the text in the assistant message.
         :ok
 
+      "subtask" ->
+        # OpenCode subagent task spawned (e.g. Explore, General, custom agent)
+        agent_name = Map.get(part, "agent", "subagent")
+        prompt = Map.get(part, "prompt", "")
+        description = Map.get(part, "description", "")
+        subtask_id = Map.get(part, "id") || generate_id()
+
+        emit_event(state, :notification, "item/started", %{
+          "itemId" => subtask_id,
+          "itemType" => "collab_agent_tool_call",
+          "toolName" => agent_name,
+          "detail" => if(description != "", do: description, else: String.slice(prompt, 0, 100)),
+          "turnId" => turn_id
+        })
+
+      "agent" ->
+        # Agent switch (e.g. Build → Plan, or primary → subagent)
+        agent_name = Map.get(part, "name", "unknown")
+        Logger.info("OpenCode agent switch: #{agent_name}")
+
+        emit_event(state, :notification, "session/state-changed", %{
+          "state" => "running",
+          "agent" => agent_name,
+          "turnId" => turn_id
+        })
+
+      "step-start" ->
+        # Agent step lifecycle — maps to item/started for work log tracking.
+        # Extract tool name from the step part when available (e.g. "read", "grep",
+        # "bash"), falling back to "step" for generic steps.
+        step_id = Map.get(part, "id") || generate_id()
+        tool_name = Map.get(part, "tool") || Map.get(part, "name") || "step"
+        description = Map.get(part, "description", "")
+
+        emit_event(state, :notification, "item/started", %{
+          "itemId" => step_id,
+          "itemType" => "dynamic_tool_call",
+          "toolName" => tool_name,
+          "detail" => description,
+          "turnId" => turn_id
+        })
+
+      "step-finish" ->
+        step_id = Map.get(part, "id")
+
+        if step_id do
+          tool_name = Map.get(part, "tool") || Map.get(part, "name") || "step"
+
+          emit_event(state, :notification, "item/completed", %{
+            "itemId" => step_id,
+            "itemType" => "dynamic_tool_call",
+            "toolName" => tool_name,
+            "status" => "completed",
+            "turnId" => turn_id
+          })
+        end
+
       _ -> :ok
     end
 
@@ -849,6 +919,26 @@ defmodule Harness.Providers.OpenCodeSession do
       "requestId" => request_id,
       "questions" => questions
     })
+
+    state
+  end
+
+  defp handle_sse_event(%{"type" => "session.created", "data" => data}, state) do
+    info = Map.get(data, "info", data)
+    parent_id = Map.get(info, "parentID")
+
+    if parent_id do
+      child_id = Map.get(info, "id", generate_id())
+      agent_name = Map.get(info, "title", "subagent")
+      Logger.info("OpenCode child session created: #{child_id} parent=#{parent_id}")
+
+      emit_event(state, :notification, "collab_agent_spawn_begin", %{
+        "agentId" => child_id,
+        "agentName" => agent_name,
+        "parentSessionId" => parent_id,
+        "turnId" => turn_id_from_state(state)
+      })
+    end
 
     state
   end
