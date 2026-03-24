@@ -46,6 +46,7 @@ defmodule Harness.ModelDiscovery do
         rescue
           ArgumentError -> :ok
         end
+
       _ ->
         :ok
     end
@@ -61,6 +62,7 @@ defmodule Harness.ModelDiscovery do
         else
           :miss
         end
+
       [] ->
         :miss
     end
@@ -84,6 +86,7 @@ defmodule Harness.ModelDiscovery do
         set_cached(provider, models)
         Logger.info("Discovered #{length(models)} models for #{provider}")
         {:ok, models}
+
       {:error, reason} = err ->
         Logger.warning("Failed to discover models for #{provider}: #{inspect(reason)}")
         err
@@ -107,8 +110,11 @@ defmodule Harness.ModelDiscovery do
   defp fetch_from_cli(binary, args, parser) do
     try do
       case System.cmd(binary, args, stderr_to_stdout: true) do
-        {output, 0} -> parser.(output)
-        {output, code} -> {:error, "CLI exited with code #{code}: #{String.slice(output, 0, 200)}"}
+        {output, 0} ->
+          parser.(output)
+
+        {output, code} ->
+          {:error, "CLI exited with code #{code}: #{String.slice(output, 0, 200)}"}
       end
     rescue
       e -> {:error, Exception.message(e)}
@@ -137,6 +143,7 @@ defmodule Harness.ModelDiscovery do
         case Regex.run(~r/^([\w.\-]+)\s+-\s+(.+?)(?:\s+\((current|default)\))?$/, line) do
           [_, slug, name | _rest] ->
             %{"slug" => String.trim(slug), "name" => String.trim(name)}
+
           _ ->
             nil
         end

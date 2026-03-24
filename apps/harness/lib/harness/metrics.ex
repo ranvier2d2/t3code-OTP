@@ -37,8 +37,12 @@ defmodule Harness.Metrics do
         t1 = :erlang.statistics(:scheduler_wall_time_all)
 
         case {t0, t1} do
-          {:undefined, _} -> []
-          {_, :undefined} -> []
+          {:undefined, _} ->
+            []
+
+          {_, :undefined} ->
+            []
+
           {before, after_} ->
             Enum.zip(Enum.sort(before), Enum.sort(after_))
             |> Enum.map(fn {{_id, a0, t0}, {_id2, a1, t1}} ->

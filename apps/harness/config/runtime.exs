@@ -13,6 +13,7 @@ config :harness, HarnessWeb.Endpoint,
 
 if config_env() == :prod do
   trimmed_secret = String.trim(harness_secret || "")
+
   if trimmed_secret == "" or trimmed_secret == "dev-harness-secret" do
     raise "T3CODE_HARNESS_SECRET must be set to a non-default, non-empty value in production"
   end

@@ -189,6 +189,7 @@ defmodule HarnessWeb.HarnessChannel do
     case Harness.ModelDiscovery.list_models(provider) do
       {:ok, models} ->
         {:reply, {:ok, %{models: models}}, socket}
+
       {:error, reason} ->
         {:reply, {:error, %{message: format_error(reason)}}, socket}
     end
@@ -218,18 +219,22 @@ defmodule HarnessWeb.HarnessChannel do
         {:reply, {:ok, %{currentSeq: current_seq, events: events}}, socket}
 
       {:gap, current_seq, oldest_seq} ->
-        {:reply, {:error, %{
-          message: "Event gap: requested seq #{after_seq} but oldest available is #{oldest_seq}",
-          currentSeq: current_seq,
-          oldestSeq: oldest_seq,
-          requiresFullSync: true
-        }}, socket}
+        {:reply,
+         {:error,
+          %{
+            message:
+              "Event gap: requested seq #{after_seq} but oldest available is #{oldest_seq}",
+            currentSeq: current_seq,
+            oldestSeq: oldest_seq,
+            requiresFullSync: true
+          }}, socket}
     end
   end
 
   @impl true
   def handle_in("events.replay", _params, socket) do
-    {:reply, {:error, %{message: "Missing or invalid required param: afterSeq (integer)"}}, socket}
+    {:reply, {:error, %{message: "Missing or invalid required param: afterSeq (integer)"}},
+     socket}
   end
 
   # --- PubSub → Channel Push ---

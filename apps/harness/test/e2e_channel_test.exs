@@ -26,7 +26,9 @@ defmodule Harness.E2EChannelTest do
   test "can join harness:lobby with valid secret" do
     {:ok, _, socket} =
       socket(HarnessWeb.HarnessSocket, nil, %{})
-      |> subscribe_and_join(HarnessWeb.HarnessChannel, "harness:lobby", %{"secret" => "ignored-in-test"})
+      |> subscribe_and_join(HarnessWeb.HarnessChannel, "harness:lobby", %{
+        "secret" => "ignored-in-test"
+      })
 
     assert socket.joined
   end
@@ -59,11 +61,12 @@ defmodule Harness.E2EChannelTest do
       socket(HarnessWeb.HarnessSocket, nil, %{})
       |> subscribe_and_join(HarnessWeb.HarnessChannel, "harness:lobby")
 
-    ref = push(socket, "session.start", %{
-      "threadId" => "test-thread-1",
-      "provider" => "nonexistent",
-      "cwd" => "/tmp"
-    })
+    ref =
+      push(socket, "session.start", %{
+        "threadId" => "test-thread-1",
+        "provider" => "nonexistent",
+        "cwd" => "/tmp"
+      })
 
     assert_reply ref, :error, %{message: message}
     assert message =~ "Unsupported provider"
@@ -74,12 +77,13 @@ defmodule Harness.E2EChannelTest do
       socket(HarnessWeb.HarnessSocket, nil, %{})
       |> subscribe_and_join(HarnessWeb.HarnessChannel, "harness:lobby")
 
-    ref = push(socket, "session.start", %{
-      "threadId" => "claude-test-#{System.unique_integer([:positive])}",
-      "provider" => "claudeAgent",
-      "cwd" => "/tmp",
-      "model" => "claude-sonnet-4-6"
-    })
+    ref =
+      push(socket, "session.start", %{
+        "threadId" => "claude-test-#{System.unique_integer([:positive])}",
+        "provider" => "claudeAgent",
+        "cwd" => "/tmp",
+        "model" => "claude-sonnet-4-6"
+      })
 
     # Should either succeed (if claude is installed) or fail with a process error
     # Either way, it should NOT return "Unsupported provider"
@@ -103,11 +107,12 @@ defmodule Harness.E2EChannelTest do
       socket(HarnessWeb.HarnessSocket, nil, %{})
       |> subscribe_and_join(HarnessWeb.HarnessChannel, "harness:lobby")
 
-    ref = push(socket, "session.start", %{
-      "threadId" => "opencode-test-#{System.unique_integer([:positive])}",
-      "provider" => "opencode",
-      "cwd" => "/tmp"
-    })
+    ref =
+      push(socket, "session.start", %{
+        "threadId" => "opencode-test-#{System.unique_integer([:positive])}",
+        "provider" => "opencode",
+        "cwd" => "/tmp"
+      })
 
     # Should either succeed or fail with a process error — NOT "Unsupported provider"
     receive do
@@ -129,11 +134,12 @@ defmodule Harness.E2EChannelTest do
       socket(HarnessWeb.HarnessSocket, nil, %{})
       |> subscribe_and_join(HarnessWeb.HarnessChannel, "harness:lobby")
 
-    ref = push(socket, "session.start", %{
-      "threadId" => "cursor-test-#{System.unique_integer([:positive])}",
-      "provider" => "cursor",
-      "cwd" => "/tmp"
-    })
+    ref =
+      push(socket, "session.start", %{
+        "threadId" => "cursor-test-#{System.unique_integer([:positive])}",
+        "provider" => "cursor",
+        "cwd" => "/tmp"
+      })
 
     receive do
       %Phoenix.Socket.Reply{ref: ^ref, status: status, payload: payload} ->
@@ -151,12 +157,19 @@ defmodule Harness.E2EChannelTest do
 
   test "socket connect rejects invalid secret" do
     # Phoenix.ChannelTest's socket/3 bypasses connect/3, so we call it directly.
-    assert :error = HarnessWeb.HarnessSocket.connect(%{"secret" => "wrong"}, %Phoenix.Socket{}, %{})
+    assert :error =
+             HarnessWeb.HarnessSocket.connect(%{"secret" => "wrong"}, %Phoenix.Socket{}, %{})
   end
 
   test "socket connect accepts valid secret" do
     expected_secret = Application.get_env(:harness, :harness_secret, "dev-harness-secret")
-    assert {:ok, _socket} = HarnessWeb.HarnessSocket.connect(%{"secret" => expected_secret}, %Phoenix.Socket{}, %{})
+
+    assert {:ok, _socket} =
+             HarnessWeb.HarnessSocket.connect(
+               %{"secret" => expected_secret},
+               %Phoenix.Socket{},
+               %{}
+             )
   end
 
   test "session.stop for nonexistent session returns error" do

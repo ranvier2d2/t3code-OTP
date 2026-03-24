@@ -96,11 +96,12 @@ defmodule Harness.Projector do
     request_id = get_in(event.payload, ["requestId"]) || event.event_id
 
     update_session(snapshot, event.thread_id, fn session ->
-      pending = Map.put(session.pending_requests, request_id, %{
-        method: event.method,
-        payload: event.payload,
-        created_at: event.created_at
-      })
+      pending =
+        Map.put(session.pending_requests, request_id, %{
+          method: event.method,
+          payload: event.payload,
+          created_at: event.created_at
+        })
 
       %{session | pending_requests: pending, updated_at: event.created_at}
     end)
@@ -112,7 +113,11 @@ defmodule Harness.Projector do
     request_id = get_in(event.payload, ["requestId"]) || event.event_id
 
     update_session(snapshot, event.thread_id, fn session ->
-      %{session | pending_requests: Map.delete(session.pending_requests, request_id), updated_at: event.created_at}
+      %{
+        session
+        | pending_requests: Map.delete(session.pending_requests, request_id),
+          updated_at: event.created_at
+      }
     end)
   end
 

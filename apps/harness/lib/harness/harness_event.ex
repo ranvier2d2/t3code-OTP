@@ -14,14 +14,14 @@ defmodule Harness.Event do
   ]
 
   @type t :: %__MODULE__{
-    event_id: String.t(),
-    thread_id: String.t(),
-    provider: String.t(),
-    created_at: String.t(),
-    kind: :session | :notification | :request | :error,
-    method: String.t(),
-    payload: map() | nil
-  }
+          event_id: String.t(),
+          thread_id: String.t(),
+          provider: String.t(),
+          created_at: String.t(),
+          kind: :session | :notification | :request | :error,
+          method: String.t(),
+          payload: map() | nil
+        }
 
   @doc """
   Create a new harness event from a raw provider event.

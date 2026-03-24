@@ -37,6 +37,7 @@ defmodule Harness.Providers.MockSession do
 
   def start_link(opts) do
     thread_id = Map.fetch!(opts, :thread_id)
+
     GenServer.start_link(__MODULE__, opts,
       name: {:via, Registry, {Harness.SessionRegistry, thread_id, "mock"}}
     )
@@ -68,6 +69,7 @@ defmodule Harness.Providers.MockSession do
         new_state = %{state | port: port}
         send(self(), :initialize)
         {:ok, new_state}
+
       {:error, reason} ->
         {:stop, reason}
     end
@@ -76,10 +78,13 @@ defmodule Harness.Providers.MockSession do
   @impl true
   def handle_info(:initialize, state) do
     {id, state} = next_request_id(state)
-    state = send_rpc_request(state, id, "initialize", %{
-      "clientInfo" => %{"name" => "t3-harness-mock", "version" => "1.0.0"},
-      "capabilities" => %{}
-    })
+
+    state =
+      send_rpc_request(state, id, "initialize", %{
+        "clientInfo" => %{"name" => "t3-harness-mock", "version" => "1.0.0"},
+        "capabilities" => %{}
+      })
+
     {:noreply, state}
   end
 
@@ -111,6 +116,7 @@ defmodule Harness.Providers.MockSession do
       Logger.info("Mock process exited with status #{status} for thread #{state.thread_id}")
       emit_event(state, :session, "session/exited", %{"exitStatus" => status})
     end
+
     reject_all_pending(state, "Process exited")
     {:stop, :normal, state}
   end
@@ -118,7 +124,9 @@ defmodule Harness.Providers.MockSession do
   @impl true
   def handle_info({:request_timeout, id}, state) do
     case Map.pop(state.pending, id) do
-      {nil, _} -> {:noreply, state}
+      {nil, _} ->
+        {:noreply, state}
+
       {%{from: from}, pending} ->
         if from, do: GenServer.reply(from, {:error, "Request timeout"})
         {:noreply, %{state | pending: pending}}
@@ -154,16 +162,26 @@ defmodule Harness.Providers.MockSession do
     {id, state} = next_request_id(state)
 
     raw_input = Map.get(params, "input", [])
-    codex_input = cond do
-      is_list(raw_input) -> raw_input
-      is_binary(raw_input) -> [%{"type" => "text", "text" => raw_input}]
-      true -> []
-    end
 
-    state = send_rpc_request(state, id, "turn/start", %{
-      "threadId" => codex_tid,
-      "input" => codex_input
-    }, from)
+    codex_input =
+      cond do
+        is_list(raw_input) -> raw_input
+        is_binary(raw_input) -> [%{"type" => "text", "text" => raw_input}]
+        true -> []
+      end
+
+    state =
+      send_rpc_request(
+        state,
+        id,
+        "turn/start",
+        %{
+          "threadId" => codex_tid,
+          "input" => codex_input
+        },
+        from
+      )
+
     {:noreply, state}
   end
 
@@ -177,9 +195,15 @@ defmodule Harness.Providers.MockSession do
   @impl true
   def terminate(_reason, state) do
     state = %{state | stopping: true}
+
     if state.port do
-      try do Port.close(state.port) catch _, _ -> :ok end
+      try do
+        Port.close(state.port)
+      catch
+        _, _ -> :ok
+      end
     end
+
     Enum.each(state.ready_waiters, &GenServer.reply(&1, {:error, "Session terminated"}))
     reject_all_pending(state, "Session terminated")
     :ok
@@ -201,16 +225,26 @@ defmodule Harness.Providers.MockSession do
     script_path = Path.join([project_root, "scripts", "mock-codex-server.ts"])
 
     try do
-      port = Port.open(
-        {:spawn_executable, to_charlist(bun_path)},
-        [
-          :binary,
-          :exit_status,
-          :use_stdio,
-          args: [~c"run", to_charlist(script_path), to_charlist(delta_count), to_charlist(delta_size_kb), to_charlist(delay_ms), to_charlist(mode)],
-          line: 1_048_576  # 1MB line buffer for large payloads
-        ]
-      )
+      port =
+        Port.open(
+          {:spawn_executable, to_charlist(bun_path)},
+          [
+            :binary,
+            :exit_status,
+            :use_stdio,
+            args: [
+              ~c"run",
+              to_charlist(script_path),
+              to_charlist(delta_count),
+              to_charlist(delta_size_kb),
+              to_charlist(delay_ms),
+              to_charlist(mode)
+            ],
+            # 1MB line buffer for large payloads
+            line: 1_048_576
+          ]
+        )
+
       {:ok, port}
     rescue
       e -> {:error, Exception.message(e)}
@@ -219,14 +253,23 @@ defmodule Harness.Providers.MockSession do
 
   defp process_line(line, state) do
     line = String.trim(line)
+
     if line == "" do
       state
     else
       case JsonRpc.decode(line) do
-        {:response, id, result} -> handle_rpc_response(state, id, result)
-        {:error_response, id, error} -> handle_rpc_error(state, id, error)
-        {:notification, method, params} -> handle_rpc_notification(state, method, params)
-        {:request, id, method, params} -> handle_rpc_request(state, id, method, params)
+        {:response, id, result} ->
+          handle_rpc_response(state, id, result)
+
+        {:error_response, id, error} ->
+          handle_rpc_error(state, id, error)
+
+        {:notification, method, params} ->
+          handle_rpc_notification(state, method, params)
+
+        {:request, id, method, params} ->
+          handle_rpc_request(state, id, method, params)
+
         {:error, _} ->
           Logger.warning("MockSession: failed to parse line: #{String.slice(line, 0, 200)}")
           state
@@ -236,19 +279,23 @@ defmodule Harness.Providers.MockSession do
 
   defp handle_rpc_response(state, id, result) do
     case Map.pop(state.pending, id) do
-      {nil, _} -> state
+      {nil, _} ->
+        state
+
       {%{from: nil, method: "initialize"}, pending} ->
         state = %{state | pending: pending}
         send_to_port(state, JsonRpc.encode_notification("initialized"))
         # Don't emit session/ready here — wait for thread/start
         send(self(), :start_thread)
         state
+
       {%{from: nil, method: "thread/start"}, pending} ->
         codex_id = get_in(result, ["thread", "id"])
         state = %{state | pending: pending, codex_thread_id: codex_id, ready: true}
         emit_event(state, :session, "session/ready", %{})
         Enum.each(state.ready_waiters, &GenServer.reply(&1, :ok))
         %{state | ready_waiters: []}
+
       {%{from: from, timer: timer}, pending} ->
         if timer, do: Process.cancel_timer(timer)
         if from, do: GenServer.reply(from, {:ok, result})
@@ -258,7 +305,9 @@ defmodule Harness.Providers.MockSession do
 
   defp handle_rpc_error(state, id, error) do
     case Map.pop(state.pending, id) do
-      {nil, _} -> state
+      {nil, _} ->
+        state
+
       {%{from: from, timer: timer, method: method}, pending} ->
         if timer, do: Process.cancel_timer(timer)
         message = Map.get(error, "message", "Unknown error")
@@ -276,7 +325,18 @@ defmodule Harness.Providers.MockSession do
 
   defp handle_rpc_request(state, id, method, params) do
     emit_event(state, :request, method, Map.put(params, "rpcId", id))
-    %{state | pending: Map.put(state.pending, id, %{kind: :provider_request, method: method, params: params, from: nil, timer: nil})}
+
+    %{
+      state
+      | pending:
+          Map.put(state.pending, id, %{
+            kind: :provider_request,
+            method: method,
+            params: params,
+            from: nil,
+            timer: nil
+          })
+    }
   end
 
   defp handle_rpc_notification(state, method, params) do
@@ -296,13 +356,15 @@ defmodule Harness.Providers.MockSession do
   defp send_to_port(%{port: port}, message), do: Port.command(port, message <> "\n")
 
   defp emit_event(state, kind, method, payload) do
-    event = Event.new(%{
-      thread_id: state.thread_id,
-      provider: state.provider,
-      kind: kind,
-      method: method,
-      payload: payload
-    })
+    event =
+      Event.new(%{
+        thread_id: state.thread_id,
+        provider: state.provider,
+        kind: kind,
+        method: method,
+        payload: payload
+      })
+
     state.event_callback.(event)
   end
 
@@ -311,14 +373,19 @@ defmodule Harness.Providers.MockSession do
       {_id, %{from: from, timer: timer}} when not is_nil(from) ->
         if timer, do: Process.cancel_timer(timer)
         GenServer.reply(from, {:error, reason})
-      _ -> :ok
+
+      _ ->
+        :ok
     end)
+
     %{state | pending: %{}}
   end
 
   defp split_lines(buffer) do
     case String.split(buffer, "\n") do
-      [single] -> {[], single}
+      [single] ->
+        {[], single}
+
       parts ->
         {lines, [remaining]} = Enum.split(parts, -1)
         {lines, remaining}

@@ -31,13 +31,14 @@ defmodule Harness.SnapshotServerTest do
     initial = SnapshotServer.get_snapshot()
     initial_seq = initial.sequence
 
-    event = Event.new(%{
-      thread_id: "test-thread-#{System.unique_integer([:positive])}",
-      provider: "codex",
-      kind: :session,
-      method: "session/connecting",
-      payload: %{"model" => "gpt-4", "cwd" => "/tmp"}
-    })
+    event =
+      Event.new(%{
+        thread_id: "test-thread-#{System.unique_integer([:positive])}",
+        provider: "codex",
+        kind: :session,
+        method: "session/connecting",
+        payload: %{"model" => "gpt-4", "cwd" => "/tmp"}
+      })
 
     SnapshotServer.apply_event(event)
 

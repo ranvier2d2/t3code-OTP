@@ -8,17 +8,18 @@ defmodule Harness.ProjectorTest do
   test "projects session/connecting event into snapshot" do
     snapshot = %Snapshot{}
 
-    event = Event.new(%{
-      thread_id: "thread-1",
-      provider: "codex",
-      kind: :session,
-      method: "session/connecting",
-      payload: %{
-        "model" => "gpt-4",
-        "cwd" => "/tmp/test",
-        "runtimeMode" => "approval-required"
-      }
-    })
+    event =
+      Event.new(%{
+        thread_id: "thread-1",
+        provider: "codex",
+        kind: :session,
+        method: "session/connecting",
+        payload: %{
+          "model" => "gpt-4",
+          "cwd" => "/tmp/test",
+          "runtimeMode" => "approval-required"
+        }
+      })
 
     result = Projector.project(snapshot, event)
 
@@ -45,13 +46,14 @@ defmodule Harness.ProjectorTest do
       }
     }
 
-    event = Event.new(%{
-      thread_id: "thread-1",
-      provider: "codex",
-      kind: :session,
-      method: "session/ready",
-      payload: %{}
-    })
+    event =
+      Event.new(%{
+        thread_id: "thread-1",
+        provider: "codex",
+        kind: :session,
+        method: "session/ready",
+        payload: %{}
+      })
 
     result = Projector.project(snapshot, event)
     assert result.sessions["thread-1"].status == :ready
@@ -68,13 +70,14 @@ defmodule Harness.ProjectorTest do
       }
     }
 
-    event = Event.new(%{
-      thread_id: "thread-1",
-      provider: "codex",
-      kind: :notification,
-      method: "turn/started",
-      payload: %{"turn" => %{"id" => "turn-abc"}}
-    })
+    event =
+      Event.new(%{
+        thread_id: "thread-1",
+        provider: "codex",
+        kind: :notification,
+        method: "turn/started",
+        payload: %{"turn" => %{"id" => "turn-abc"}}
+      })
 
     result = Projector.project(snapshot, event)
     session = result.sessions["thread-1"]
@@ -94,13 +97,14 @@ defmodule Harness.ProjectorTest do
       }
     }
 
-    event = Event.new(%{
-      thread_id: "thread-1",
-      provider: "codex",
-      kind: :notification,
-      method: "turn/completed",
-      payload: %{}
-    })
+    event =
+      Event.new(%{
+        thread_id: "thread-1",
+        provider: "codex",
+        kind: :notification,
+        method: "turn/completed",
+        payload: %{}
+      })
 
     result = Projector.project(snapshot, event)
     session = result.sessions["thread-1"]
@@ -119,13 +123,14 @@ defmodule Harness.ProjectorTest do
       }
     }
 
-    event = Event.new(%{
-      thread_id: "thread-1",
-      provider: "codex",
-      kind: :session,
-      method: "session/exited",
-      payload: %{}
-    })
+    event =
+      Event.new(%{
+        thread_id: "thread-1",
+        provider: "codex",
+        kind: :session,
+        method: "session/exited",
+        payload: %{}
+      })
 
     result = Projector.project(snapshot, event)
     assert result.sessions["thread-1"].status == :closed
@@ -134,9 +139,32 @@ defmodule Harness.ProjectorTest do
   test "sequence increments with each event" do
     snapshot = %Snapshot{}
 
-    e1 = Event.new(%{thread_id: "t1", provider: "codex", kind: :session, method: "session/connecting", payload: %{}})
-    e2 = Event.new(%{thread_id: "t1", provider: "codex", kind: :session, method: "session/ready", payload: %{}})
-    e3 = Event.new(%{thread_id: "t1", provider: "codex", kind: :notification, method: "some/event", payload: %{}})
+    e1 =
+      Event.new(%{
+        thread_id: "t1",
+        provider: "codex",
+        kind: :session,
+        method: "session/connecting",
+        payload: %{}
+      })
+
+    e2 =
+      Event.new(%{
+        thread_id: "t1",
+        provider: "codex",
+        kind: :session,
+        method: "session/ready",
+        payload: %{}
+      })
+
+    e3 =
+      Event.new(%{
+        thread_id: "t1",
+        provider: "codex",
+        kind: :notification,
+        method: "some/event",
+        payload: %{}
+      })
 
     result = snapshot |> Projector.project(e1) |> Projector.project(e2) |> Projector.project(e3)
     assert result.sequence == 3
@@ -153,13 +181,14 @@ defmodule Harness.ProjectorTest do
       }
     }
 
-    event = Event.new(%{
-      thread_id: "thread-1",
-      provider: "codex",
-      kind: :notification,
-      method: "item/agentMessage/delta",
-      payload: %{"delta" => "hello"}
-    })
+    event =
+      Event.new(%{
+        thread_id: "thread-1",
+        provider: "codex",
+        kind: :notification,
+        method: "item/agentMessage/delta",
+        payload: %{"delta" => "hello"}
+      })
 
     result = Projector.project(snapshot, event)
     # Sequence increments but session state unchanged
@@ -180,18 +209,19 @@ defmodule Harness.ProjectorTest do
       }
     }
 
-    event = Event.new(%{
-      event_id: "req-001",
-      thread_id: "thread-1",
-      provider: "opencode",
-      kind: :request,
-      method: "request/opened",
-      payload: %{
-        "requestId" => "req-001",
-        "requestType" => "command_execution_approval",
-        "detail" => "ls /tmp"
-      }
-    })
+    event =
+      Event.new(%{
+        event_id: "req-001",
+        thread_id: "thread-1",
+        provider: "opencode",
+        kind: :request,
+        method: "request/opened",
+        payload: %{
+          "requestId" => "req-001",
+          "requestType" => "command_execution_approval",
+          "detail" => "ls /tmp"
+        }
+      })
 
     result = Projector.project(snapshot, event)
     session = result.sessions["thread-1"]
@@ -223,16 +253,17 @@ defmodule Harness.ProjectorTest do
       }
     }
 
-    event = Event.new(%{
-      thread_id: "thread-1",
-      provider: "opencode",
-      kind: :notification,
-      method: "request/resolved",
-      payload: %{
-        "requestId" => "req-001",
-        "decision" => "accept"
-      }
-    })
+    event =
+      Event.new(%{
+        thread_id: "thread-1",
+        provider: "opencode",
+        kind: :notification,
+        method: "request/resolved",
+        payload: %{
+          "requestId" => "req-001",
+          "decision" => "accept"
+        }
+      })
 
     result = Projector.project(snapshot, event)
     session = result.sessions["thread-1"]
@@ -258,13 +289,14 @@ defmodule Harness.ProjectorTest do
       }
     }
 
-    event = Event.new(%{
-      thread_id: "thread-1",
-      provider: "opencode",
-      kind: :notification,
-      method: "request/resolved",
-      payload: %{"requestId" => "req-nonexistent"}
-    })
+    event =
+      Event.new(%{
+        thread_id: "thread-1",
+        provider: "opencode",
+        kind: :notification,
+        method: "request/resolved",
+        payload: %{"requestId" => "req-nonexistent"}
+      })
 
     result = Projector.project(snapshot, event)
     session = result.sessions["thread-1"]
@@ -285,31 +317,34 @@ defmodule Harness.ProjectorTest do
       }
     }
 
-    e1 = Event.new(%{
-      event_id: "req-A",
-      thread_id: "thread-1",
-      provider: "opencode",
-      kind: :request,
-      method: "request/opened",
-      payload: %{"requestId" => "req-A", "requestType" => "file_change_approval"}
-    })
+    e1 =
+      Event.new(%{
+        event_id: "req-A",
+        thread_id: "thread-1",
+        provider: "opencode",
+        kind: :request,
+        method: "request/opened",
+        payload: %{"requestId" => "req-A", "requestType" => "file_change_approval"}
+      })
 
-    e2 = Event.new(%{
-      event_id: "req-B",
-      thread_id: "thread-1",
-      provider: "opencode",
-      kind: :request,
-      method: "request/opened",
-      payload: %{"requestId" => "req-B", "requestType" => "command_execution_approval"}
-    })
+    e2 =
+      Event.new(%{
+        event_id: "req-B",
+        thread_id: "thread-1",
+        provider: "opencode",
+        kind: :request,
+        method: "request/opened",
+        payload: %{"requestId" => "req-B", "requestType" => "command_execution_approval"}
+      })
 
-    e_resolve_a = Event.new(%{
-      thread_id: "thread-1",
-      provider: "opencode",
-      kind: :notification,
-      method: "request/resolved",
-      payload: %{"requestId" => "req-A"}
-    })
+    e_resolve_a =
+      Event.new(%{
+        thread_id: "thread-1",
+        provider: "opencode",
+        kind: :notification,
+        method: "request/resolved",
+        payload: %{"requestId" => "req-A"}
+      })
 
     result =
       snapshot
@@ -336,13 +371,14 @@ defmodule Harness.ProjectorTest do
       }
     }
 
-    event = Event.new(%{
-      thread_id: "thread-oc",
-      provider: "opencode",
-      kind: :session,
-      method: "session/started",
-      payload: %{"sessionId" => "oc-sess-1"}
-    })
+    event =
+      Event.new(%{
+        thread_id: "thread-oc",
+        provider: "opencode",
+        kind: :session,
+        method: "session/started",
+        payload: %{"sessionId" => "oc-sess-1"}
+      })
 
     result = Projector.project(snapshot, event)
     assert result.sessions["thread-oc"].status == :ready
@@ -360,13 +396,14 @@ defmodule Harness.ProjectorTest do
       }
     }
 
-    event = Event.new(%{
-      thread_id: "thread-1",
-      provider: "opencode",
-      kind: :session,
-      method: "session/closed",
-      payload: %{}
-    })
+    event =
+      Event.new(%{
+        thread_id: "thread-1",
+        provider: "opencode",
+        kind: :session,
+        method: "session/closed",
+        payload: %{}
+      })
 
     result = Projector.project(snapshot, event)
     session = result.sessions["thread-1"]
@@ -385,13 +422,14 @@ defmodule Harness.ProjectorTest do
       }
     }
 
-    event = Event.new(%{
-      thread_id: "thread-1",
-      provider: "opencode",
-      kind: :session,
-      method: "session/error",
-      payload: %{"message" => "binary not found"}
-    })
+    event =
+      Event.new(%{
+        thread_id: "thread-1",
+        provider: "opencode",
+        kind: :session,
+        method: "session/error",
+        payload: %{"message" => "binary not found"}
+      })
 
     result = Projector.project(snapshot, event)
     assert result.sessions["thread-1"].status == :error
@@ -401,30 +439,33 @@ defmodule Harness.ProjectorTest do
     for runtime_mode_str <- ["full-access", "full_access"] do
       snapshot = %Snapshot{}
 
-      event = Event.new(%{
-        thread_id: "thread-1",
-        provider: "opencode",
-        kind: :session,
-        method: "session/connecting",
-        payload: %{"runtimeMode" => runtime_mode_str}
-      })
+      event =
+        Event.new(%{
+          thread_id: "thread-1",
+          provider: "opencode",
+          kind: :session,
+          method: "session/connecting",
+          payload: %{"runtimeMode" => runtime_mode_str}
+        })
 
       result = Projector.project(snapshot, event)
+
       assert result.sessions["thread-1"].runtime_mode == :full_access,
-        "expected :full_access for runtimeMode=#{inspect(runtime_mode_str)}"
+             "expected :full_access for runtimeMode=#{inspect(runtime_mode_str)}"
     end
   end
 
   test "parse_runtime_mode: unknown values default to :approval_required" do
     snapshot = %Snapshot{}
 
-    event = Event.new(%{
-      thread_id: "thread-1",
-      provider: "opencode",
-      kind: :session,
-      method: "session/connecting",
-      payload: %{"runtimeMode" => "something-else"}
-    })
+    event =
+      Event.new(%{
+        thread_id: "thread-1",
+        provider: "opencode",
+        kind: :session,
+        method: "session/connecting",
+        payload: %{"runtimeMode" => "something-else"}
+      })
 
     result = Projector.project(snapshot, event)
     assert result.sessions["thread-1"].runtime_mode == :approval_required
@@ -433,13 +474,14 @@ defmodule Harness.ProjectorTest do
   test "update_session is a no-op when thread does not exist in snapshot" do
     snapshot = %Snapshot{sessions: %{}}
 
-    event = Event.new(%{
-      thread_id: "nonexistent-thread",
-      provider: "codex",
-      kind: :session,
-      method: "session/ready",
-      payload: %{}
-    })
+    event =
+      Event.new(%{
+        thread_id: "nonexistent-thread",
+        provider: "codex",
+        kind: :session,
+        method: "session/ready",
+        payload: %{}
+      })
 
     result = Projector.project(snapshot, event)
     # Sequence still increments, but no session was created or modified

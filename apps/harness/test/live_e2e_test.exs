@@ -11,6 +11,7 @@ defmodule Harness.LiveE2ETest do
 
   defp run_test(name, fun) do
     IO.puts("\n=== #{name} ===")
+
     try do
       fun.()
       IO.puts("  ✓ PASS")
@@ -31,6 +32,7 @@ defmodule Harness.LiveE2ETest do
       {:harness_event, %{threadId: ^thread_id} = event} ->
         IO.puts("    Event: #{event.method}")
         event
+
       {:harness_event, event} ->
         IO.puts("    Event (other): #{inspect(event, limit: 50)}")
         wait_for_event(thread_id, max(timeout - 100, 0))
@@ -47,16 +49,20 @@ defmodule Harness.LiveE2ETest do
   end
 
   defp collect_events_loop(_thread_id, remaining, acc) when remaining <= 0, do: Enum.reverse(acc)
+
   defp collect_events_loop(thread_id, remaining, acc) do
     start = System.monotonic_time(:millisecond)
+
     receive do
       {:harness_event, %{threadId: ^thread_id} = event} ->
         elapsed = System.monotonic_time(:millisecond) - start
         IO.puts("    [#{length(acc) + 1}] #{event.method}")
         collect_events_loop(thread_id, remaining - elapsed, [event | acc])
+
       {:harness_event, _} ->
         elapsed = System.monotonic_time(:millisecond) - start
         collect_events_loop(thread_id, remaining - elapsed, acc)
+
       {:harness_session_changed, _} ->
         elapsed = System.monotonic_time(:millisecond) - start
         collect_events_loop(thread_id, remaining - elapsed, acc)
@@ -80,15 +86,17 @@ defmodule Harness.LiveE2ETest do
 
     # Test 2: OpenCode session
     opencode_available = System.find_executable("opencode") != nil
+
     if opencode_available do
       run_test("OpenCode: create session", fn ->
         thread_id = "opencode-e2e-#{System.unique_integer([:positive])}"
 
-        result = SessionManager.start_session(%{
-          "threadId" => thread_id,
-          "provider" => "opencode",
-          "cwd" => "/tmp"
-        })
+        result =
+          SessionManager.start_session(%{
+            "threadId" => thread_id,
+            "provider" => "opencode",
+            "cwd" => "/tmp"
+          })
 
         case result do
           {:ok, session} ->
@@ -118,20 +126,24 @@ defmodule Harness.LiveE2ETest do
     # Test 3: Check all providers are registered
     run_test("All 4 providers registered", fn ->
       providers = ["codex", "claudeAgent", "opencode", "cursor"]
+
       Enum.each(providers, fn provider ->
         # Try to start — will fail because binaries may not be ready,
         # but should NOT fail with "Unsupported provider"
         thread_id = "check-#{provider}-#{System.unique_integer([:positive])}"
-        result = SessionManager.start_session(%{
-          "threadId" => thread_id,
-          "provider" => provider,
-          "cwd" => "/tmp"
-        })
+
+        result =
+          SessionManager.start_session(%{
+            "threadId" => thread_id,
+            "provider" => provider,
+            "cwd" => "/tmp"
+          })
 
         case result do
           {:ok, _} ->
             IO.puts("    #{provider}: ✓ accepted")
             SessionManager.stop_session(thread_id)
+
           {:error, msg} when is_binary(msg) ->
             if String.contains?(msg, "Unsupported") do
               raise "#{provider} not registered!"
@@ -148,6 +160,7 @@ defmodule Harness.LiveE2ETest do
       snapshot = SnapshotServer.get_snapshot()
       IO.puts("    Final sequence: #{snapshot.sequence}")
       IO.puts("    Active sessions: #{map_size(snapshot.sessions)}")
+
       Enum.each(snapshot.sessions, fn {id, session} ->
         IO.puts("      #{id}: #{session.status} (#{session.provider})")
       end)
