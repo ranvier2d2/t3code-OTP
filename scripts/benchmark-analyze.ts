@@ -273,7 +273,7 @@ function generateTimeSeriesCSV(nodeSteps: BenchmarkStep[], elixirSteps: Benchmar
     const nodeByTime = new Map((nStep.timeSeries ?? []).map((t) => [t.elapsed_ms, t]));
     const elixirByTime = new Map((eStep?.timeSeries ?? []).map((t) => [t.elapsed_ms, t]));
     const allTimes = [...new Set([...nodeByTime.keys(), ...elixirByTime.keys()])].sort(
-      (a, b) => a - b,
+      (a, b) => (a ?? 0) - (b ?? 0),
     );
 
     for (const t of allTimes) {

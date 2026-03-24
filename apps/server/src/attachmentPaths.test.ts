@@ -152,9 +152,7 @@ describe("resolveAttachmentRelativePath", () => {
       attachmentsDir,
       relativePath: "thread-1/folder with spaces/my file (1).png",
     });
-    expect(result).toBe(
-      path.join(attachmentsDir, "thread-1/folder with spaces/my file (1).png"),
-    );
+    expect(result).toBe(path.join(attachmentsDir, "thread-1/folder with spaces/my file (1).png"));
   });
 
   it("handles UTF-8 multibyte characters", () => {

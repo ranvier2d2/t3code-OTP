@@ -156,7 +156,15 @@ async function runNode() {
         const p = victimSession.pending.get(msg.id);
         if (p) {
           victimSession.pending.delete(msg.id);
-          if (msg.error) { p.reject(new Error(typeof msg.error === "object" ? JSON.stringify(msg.error) : String(msg.error))); } else { p.resolve(msg.result); }
+          if (msg.error) {
+            p.reject(
+              new Error(
+                typeof msg.error === "object" ? JSON.stringify(msg.error) : String(msg.error),
+              ),
+            );
+          } else {
+            p.resolve(msg.result);
+          }
         }
         return;
       }
@@ -195,7 +203,15 @@ async function runNode() {
           const p = session.pending.get(msg.id);
           if (p) {
             session.pending.delete(msg.id);
-            if (msg.error) { p.reject(new Error(typeof msg.error === "object" ? JSON.stringify(msg.error) : String(msg.error))); } else { p.resolve(msg.result); }
+            if (msg.error) {
+              p.reject(
+                new Error(
+                  typeof msg.error === "object" ? JSON.stringify(msg.error) : String(msg.error),
+                ),
+              );
+            } else {
+              p.resolve(msg.result);
+            }
           }
           return;
         }

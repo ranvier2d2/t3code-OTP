@@ -72,10 +72,10 @@ function rawToProviderEvent(raw: HarnessRawEvent): ProviderEvent {
     threadId: raw.threadId,
     createdAt: raw.createdAt,
     method: raw.method,
-    message: typeof payload.message === "string" ? payload.message : undefined,
-    turnId: typeof payload.turnId === "string" ? payload.turnId : undefined,
-    itemId: typeof payload.itemId === "string" ? payload.itemId : undefined,
-    requestId: typeof payload.requestId === "string" ? payload.requestId : undefined,
+    ...(typeof payload.message === "string" ? { message: payload.message } : {}),
+    ...(typeof payload.turnId === "string" ? { turnId: payload.turnId } : {}),
+    ...(typeof payload.itemId === "string" ? { itemId: payload.itemId } : {}),
+    ...(typeof payload.requestId === "string" ? { requestId: payload.requestId } : {}),
     payload: raw.payload,
   };
 }
@@ -166,12 +166,12 @@ async function main() {
   const mappedEvents: MappedEvent[] = [];
   const unmappedMethods: string[] = [];
 
-  ws.on("error", (err) => {
+  ws.on("error", (err: Error) => {
     console.error("WebSocket error:", err.message);
     process.exit(1);
   });
 
-  ws.on("message", (raw) => {
+  ws.on("message", (raw: WebSocket.RawData) => {
     const msg = JSON.parse(raw.toString());
     const [, ref, , event, payload] = msg as [
       string | null,

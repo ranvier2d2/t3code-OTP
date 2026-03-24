@@ -82,12 +82,12 @@ class PhoenixChannelClient {
         resolve();
       });
 
-      this.ws.on("error", (err) => {
+      this.ws.on("error", (err: Error) => {
         log("WS-ERR", `${err.message ?? err}`);
         reject(err);
       });
 
-      this.ws.on("message", (data) => {
+      this.ws.on("message", (data: WebSocket.RawData) => {
         try {
           const msg: PhxMessage = JSON.parse(data.toString());
           this.handleMessage(msg);
@@ -205,7 +205,7 @@ async function main() {
   const results: Array<{ test: string; ok: boolean; detail?: string }> = [];
 
   const record = (test: string, ok: boolean, detail?: string) => {
-    results.push({ test, ok, detail });
+    results.push({ test, ok, ...(detail !== undefined ? { detail } : {}) });
     if (ok) {
       pass(test);
       passed++;

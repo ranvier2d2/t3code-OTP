@@ -14,7 +14,7 @@
  *   bun run scripts/stress-test-real-claude.ts --runtime=elixir
  */
 
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { writeFileSync, mkdirSync } from "node:fs";
 
 let HarnessClientManager: any;
@@ -134,7 +134,8 @@ function trackEvent(stats: SessionStats, method: string, payload: unknown) {
     stats.contentDeltas++;
   } else if (method === "item/started" || method === "content_block_start") {
     const p = payload as Record<string, unknown>;
-    const itemType = String(p?.itemType || p?.content_block?.type || "");
+    const contentBlock = p?.content_block as Record<string, unknown> | undefined;
+    const itemType = String(p?.itemType || contentBlock?.type || "");
     if (itemType.includes("file") || itemType.includes("edit") || itemType.includes("write")) {
       stats.fileChanges++;
     } else if (itemType.includes("command") || itemType.includes("bash")) {
@@ -168,7 +169,7 @@ async function runNode() {
     lastLagCheck = now;
   }, 100);
 
-  const children: ChildProcessWithoutNullStreams[] = [];
+  const children: ChildProcess[] = [];
 
   for (let i = 0; i < N; i++) {
     const workload = CLAUDE_PROMPTS[i % CLAUDE_PROMPTS.length]!;

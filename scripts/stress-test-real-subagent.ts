@@ -675,9 +675,9 @@ async function main() {
       ...(RUNTIME === "node" && lags.length > 0
         ? {
             lagP50_ms:
-              Math.round([...lags].sort((a, b) => a - b)[Math.floor(lags.length * 0.5)] * 10) / 10,
+              Math.round(([...lags].sort((a, b) => a - b)[Math.floor(lags.length * 0.5)] ?? 0) * 10) / 10,
             lagP99_ms:
-              Math.round([...lags].sort((a, b) => a - b)[Math.floor(lags.length * 0.99)] * 10) / 10,
+              Math.round(([...lags].sort((a, b) => a - b)[Math.floor(lags.length * 0.99)] ?? 0) * 10) / 10,
           }
         : {}),
     },

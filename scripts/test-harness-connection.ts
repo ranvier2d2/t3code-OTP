@@ -41,12 +41,12 @@ async function main() {
 
   const ws = new WebSocket(URL);
 
-  ws.on("error", (err) => {
+  ws.on("error", (err: Error) => {
     console.error("❌ WebSocket error:", err.message);
     process.exit(1);
   });
 
-  ws.on("message", (raw) => {
+  ws.on("message", (raw: WebSocket.RawData) => {
     const text = raw.toString();
     console.log(`  [RAW] ${text.slice(0, 200)}`);
     let msg: unknown[];
@@ -58,9 +58,10 @@ async function main() {
     }
     const [, ref, , event, payload] = msg;
 
-    if (event === "phx_reply" && ref && pending.has(ref)) {
-      const { resolve, reject } = pending.get(ref)!;
-      pending.delete(ref);
+    const refStr = typeof ref === "string" ? ref : String(ref);
+    if (event === "phx_reply" && ref && pending.has(refStr)) {
+      const { resolve, reject } = pending.get(refStr)!;
+      pending.delete(refStr);
       const typedPayload = payload as { status: string; response: unknown };
       if (typedPayload.status === "ok") {
         resolve(typedPayload.response);

@@ -96,12 +96,12 @@ async function main() {
 
   const ws = new WebSocket(URL);
 
-  ws.on("error", (err) => {
+  ws.on("error", (err: Error) => {
     console.error("❌ WebSocket error:", err.message);
     process.exit(1);
   });
 
-  ws.on("message", (raw) => {
+  ws.on("message", (raw: WebSocket.RawData) => {
     const msg = JSON.parse(raw.toString());
     const [, ref, , event, payload] = msg as [
       string | null,

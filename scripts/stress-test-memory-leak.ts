@@ -525,8 +525,10 @@ async function main() {
   }
 
   if (RUNTIME === "node") {
-    const firstHeap = timeSeries[0]?.heapUsed ?? 0;
-    const lastHeap = timeSeries[timeSeries.length - 1]?.heapUsed ?? 0;
+    const firstSnapshot = timeSeries[0];
+    const lastSnapshot = timeSeries[timeSeries.length - 1];
+    const firstHeap = firstSnapshot && 'heapUsed' in firstSnapshot ? firstSnapshot.heapUsed : 0;
+    const lastHeap = lastSnapshot && 'heapUsed' in lastSnapshot ? lastSnapshot.heapUsed : 0;
     const heapGrowth = ((lastHeap - firstHeap) / 1024 / 1024).toFixed(1);
     console.log(
       `\n  Node heap growth: ${heapGrowth}MB (${(firstHeap / 1024 / 1024).toFixed(1)} → ${(lastHeap / 1024 / 1024).toFixed(1)}MB)`,
@@ -544,10 +546,12 @@ async function main() {
     const first = timeSeries[0]!;
     const last = timeSeries[timeSeries.length - 1]!;
     const leakGrowth =
+      'leakyProcessMemory' in first && 'leakyProcessMemory' in last &&
       first.leakyProcessMemory && last.leakyProcessMemory
         ? ((last.leakyProcessMemory - first.leakyProcessMemory) / 1024).toFixed(0)
         : "?";
     const healthyStable =
+      'healthyAvgMemory' in first && 'healthyAvgMemory' in last &&
       first.healthyAvgMemory && last.healthyAvgMemory
         ? ((last.healthyAvgMemory - first.healthyAvgMemory) / 1024).toFixed(0)
         : "?";
@@ -555,6 +559,16 @@ async function main() {
     console.log(`  Healthy process avg memory change: ${healthyStable}KB`);
     console.log(`  → Leak is ISOLATED to one GenServer process`);
   }
+
+  // Compute node-specific summary fields with type guards
+  const nodeHeapGrowth = (() => {
+    if (timeSeries.length <= 1) return 0;
+    const lastTs = timeSeries[timeSeries.length - 1]!;
+    const firstTs = timeSeries[0]!;
+    const lastHeap = 'heapUsed' in lastTs ? (lastTs.heapUsed ?? 0) : 0;
+    const firstHeap = 'heapUsed' in firstTs ? (firstTs.heapUsed ?? 0) : 0;
+    return Math.round(((lastHeap - firstHeap) / 1024 / 1024) * 10) / 10;
+  })();
 
   const output = {
     test: "memory-leak",
@@ -577,16 +591,7 @@ async function main() {
       healthyTurnsCompleted: healthy.map((h) => h.turnsCompleted),
       ...(RUNTIME === "node"
         ? {
-            heapGrowthMb:
-              timeSeries.length > 1
-                ? Math.round(
-                    (((timeSeries[timeSeries.length - 1]!.heapUsed ?? 0) -
-                      (timeSeries[0]!.heapUsed ?? 0)) /
-                      1024 /
-                      1024) *
-                      10,
-                  ) / 10
-                : 0,
+            heapGrowthMb: nodeHeapGrowth,
             leakedObjectCount: result.leakedObjectCount,
             lagP50_ms: lags.length > 0 ? Math.round(percentile(lags, 50) * 10) / 10 : 0,
             lagP99_ms: lags.length > 0 ? Math.round(percentile(lags, 99) * 10) / 10 : 0,

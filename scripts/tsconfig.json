@@ -12,5 +12,9 @@
       }
     ]
   },
-  "include": ["**/*.ts"]
+  "include": [
+    "**/*.ts",
+    "../apps/server/src/provider/Layers/HarnessClientManager.ts",
+    "../apps/server/src/provider/Layers/codexEventMapping.ts"
+  ]
 }
