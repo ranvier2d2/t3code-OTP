@@ -714,7 +714,8 @@ function migratePersistedComposerDraftStoreState(
   const rawProjectDraftThreadIdByProjectId = candidate.projectDraftThreadIdByProjectId;
   const stickyModel =
     typeof candidate.stickyModel === "string"
-      ? (normalizeModelSlug(candidate.stickyModel, inferProviderForModel(candidate.stickyModel)) ?? null)
+      ? (normalizeModelSlug(candidate.stickyModel, inferProviderForModel(candidate.stickyModel)) ??
+        null)
       : null;
   const stickyModelOptions =
     normalizeProviderModelOptions(candidate.stickyModelOptions) ?? EMPTY_PROVIDER_MODEL_OPTIONS;
@@ -809,7 +810,10 @@ function normalizeCurrentPersistedComposerDraftStoreState(
     );
   const stickyModel =
     typeof normalizedPersistedState.stickyModel === "string"
-      ? (normalizeModelSlug(normalizedPersistedState.stickyModel, inferProviderForModel(normalizedPersistedState.stickyModel)) ?? null)
+      ? (normalizeModelSlug(
+          normalizedPersistedState.stickyModel,
+          inferProviderForModel(normalizedPersistedState.stickyModel),
+        ) ?? null)
       : null;
   const stickyModelOptions =
     normalizeProviderModelOptions(normalizedPersistedState.stickyModelOptions) ??

@@ -147,7 +147,11 @@ async function runNode() {
           if (p) {
             session.pending.delete(msg.id);
             if (msg.error) {
-              p.reject(new Error(typeof msg.error === "object" ? JSON.stringify(msg.error) : String(msg.error)));
+              p.reject(
+                new Error(
+                  typeof msg.error === "object" ? JSON.stringify(msg.error) : String(msg.error),
+                ),
+              );
             } else {
               p.resolve(msg.result);
             }

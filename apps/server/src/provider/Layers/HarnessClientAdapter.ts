@@ -118,7 +118,11 @@ function toSessionError(
   cause: unknown,
 ): ProviderAdapterSessionNotFoundError | ProviderAdapterSessionClosedError | undefined {
   const normalized = toMessage(cause, "").toLowerCase();
-  if (normalized.includes("unknown session") || normalized.includes("unknown provider session") || normalized.includes("session not found")) {
+  if (
+    normalized.includes("unknown session") ||
+    normalized.includes("unknown provider session") ||
+    normalized.includes("session not found")
+  ) {
     return new ProviderAdapterSessionNotFoundError({
       provider: DEFAULT_PROVIDER,
       threadId,
@@ -727,7 +731,9 @@ function mapHarnessEventToRuntimeEvents(
         ...runtimeEventBase(event, canonicalThreadId),
         type: "item.started" as const,
         payload: {
-          itemType: (lastToolName ? "dynamic_tool_call" : "collab_agent_tool_call") as ItemLifecyclePayload["itemType"],
+          itemType: (lastToolName
+            ? "dynamic_tool_call"
+            : "collab_agent_tool_call") as ItemLifecyclePayload["itemType"],
           ...(lastToolName ? { title: lastToolName } : {}),
           ...(description ? { detail: description } : {}),
         },

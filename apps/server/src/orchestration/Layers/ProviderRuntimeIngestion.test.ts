@@ -2166,9 +2166,7 @@ describe("ProviderRuntimeIngestion", () => {
       const thread1 = readModel.threads.find((t) => t.id === ThreadId.makeUnsafe("thread-1"));
       expect(thread1?.session?.activeTurnId).toBe("turn-thread-1-original");
 
-      const staleMessage = thread1?.messages.find(
-        (m) => m.id === "assistant:item-stale",
-      );
+      const staleMessage = thread1?.messages.find((m) => m.id === "assistant:item-stale");
       expect(staleMessage).toBeUndefined();
     });
 
@@ -2266,8 +2264,7 @@ describe("ProviderRuntimeIngestion", () => {
 
       const thread = await waitForThread(
         harness.engine,
-        (entry) =>
-          entry.session?.status === "ready" && entry.session?.activeTurnId === null,
+        (entry) => entry.session?.status === "ready" && entry.session?.activeTurnId === null,
       );
       expect(thread.session?.status).toBe("ready");
       expect(thread.session?.activeTurnId).toBeNull();

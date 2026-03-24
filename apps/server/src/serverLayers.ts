@@ -55,7 +55,8 @@ const runtimePtyAdapterLoaders = {
 
 const makeRuntimePtyAdapterLayer = () =>
   Effect.gen(function* () {
-    const runtime = process.versions.bun !== undefined && process.platform !== "win32" ? "bun" : "node";
+    const runtime =
+      process.versions.bun !== undefined && process.platform !== "win32" ? "bun" : "node";
     const loader = runtimePtyAdapterLoaders[runtime];
     const ptyAdapterModule = yield* Effect.promise<RuntimePtyAdapterLoader>(loader);
     return ptyAdapterModule.layer;
