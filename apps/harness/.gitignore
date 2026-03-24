@@ -25,3 +25,7 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 harness-*.tar
 
+
+# E2E test artifacts
+apps/web/e2e-results/
+test-results/
