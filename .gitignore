@@ -28,3 +28,6 @@ test-e2e.txt
 e2e-*.png
 codex-test-*.png
 .playwright-mcp/
+# E2E test artifacts
+apps/web/e2e-results/
+test-results/

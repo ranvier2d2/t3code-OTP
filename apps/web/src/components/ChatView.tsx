@@ -122,6 +122,7 @@ import { readNativeApi } from "~/nativeApi";
 import {
   getCustomModelOptionsByProvider,
   getCustomModelsByProvider,
+  getProviderStartOptions,
   resolveAppModelSelection,
   useAppSettings,
 } from "../appSettings";
@@ -618,26 +619,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   );
   const selectedPromptEffort = composerProviderState.promptEffort;
   const selectedModelOptionsForDispatch = composerProviderState.modelOptionsForDispatch;
-  const providerOptionsForDispatch = useMemo(() => {
-    const hasCodex = settings.codexBinaryPath || settings.codexHomePath;
-    const hasClaude = settings.claudeBinaryPath;
-    if (!hasCodex && !hasClaude) {
-      return undefined;
-    }
-    return {
-      ...(hasCodex
-        ? {
-            codex: {
-              ...(settings.codexBinaryPath ? { binaryPath: settings.codexBinaryPath } : {}),
-              ...(settings.codexHomePath ? { homePath: settings.codexHomePath } : {}),
-            },
-          }
-        : {}),
-      ...(hasClaude
-        ? { claudeAgent: { binaryPath: settings.claudeBinaryPath } }
-        : {}),
-    };
-  }, [settings.codexBinaryPath, settings.codexHomePath, settings.claudeBinaryPath]);
+  const providerOptionsForDispatch = useMemo(() => getProviderStartOptions(settings), [settings]);
   const selectedModelForPicker = selectedModel;
   const phase = derivePhase(activeThread?.session ?? null);
   const isSendBusy = sendPhase !== "idle";
