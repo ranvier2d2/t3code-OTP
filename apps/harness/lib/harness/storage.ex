@@ -74,7 +74,7 @@ defmodule Harness.Storage do
     GenServer.call(__MODULE__, {:get_binding, thread_id})
   end
 
-  @doc "Delete a binding. Called when resume fails non-recoverably (before fresh start)."
+  @doc "Delete a binding. Called on any resume failure (recoverable or not) before retry."
   def delete_binding(thread_id) do
     GenServer.call(__MODULE__, {:delete_binding, thread_id})
   end
@@ -264,7 +264,7 @@ defmodule Harness.Storage do
 
     # Bindings: provider-specific resume cursors that survive session close.
     # Rows are UPSERTed on thread/start or thread/resume success.
-    # Deleted only on non-recoverable resume failure (before fresh start).
+    # Deleted on any resume failure (recoverable or not) before retry.
     # Expected provider values: "codex", "cursor", "opencode"
     # (Claude uses Node SDK directly, not the harness.)
     Sqlite3.execute(conn, """
