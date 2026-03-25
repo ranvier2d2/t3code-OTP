@@ -464,6 +464,9 @@ defmodule Harness.Providers.OpenCodeSession do
   def terminate(_reason, state) do
     state = %{state | stopped: true}
 
+    # Cancel pending approvals/elicitations so SQLite rows are cleaned up
+    cancel_all_pending(state)
+
     # Reject ready waiters
     Enum.each(state.ready_waiters, &GenServer.reply(&1, {:error, "Session terminated"}))
 
@@ -489,6 +492,22 @@ defmodule Harness.Providers.OpenCodeSession do
     end
 
     :ok
+  end
+
+  defp cancel_all_pending(state) do
+    Enum.each(state.pending_permissions, fn {request_id, pending} ->
+      if Map.get(pending, :question_id) do
+        emit_event(state, :notification, "user-input/resolved", %{
+          "requestId" => request_id,
+          "answers" => %{}
+        })
+      else
+        emit_event(state, :notification, "request/resolved", %{
+          "requestId" => request_id,
+          "decision" => "cancel"
+        })
+      end
+    end)
   end
 
   # --- Process Management ---

@@ -37,3 +37,7 @@ codex-test-*.png
 # E2E test artifacts
 apps/web/e2e-results/
 test-results/
+
+# Demo scripts (local recording, not shipped)
+apps/web/e2e/demo.spec.ts
+scripts/demo-cli.sh

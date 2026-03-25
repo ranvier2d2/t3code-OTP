@@ -392,6 +392,12 @@ defmodule Harness.Providers.CodexSession do
       {rpc_id, _request} ->
         response = JsonRpc.encode_response(rpc_id, %{"decision" => decision})
         send_to_port(state, response)
+
+        emit_event(state, :notification, "request/resolved", %{
+          "requestId" => request_id,
+          "decision" => decision
+        })
+
         {:reply, :ok, remove_pending(state, rpc_id)}
 
       nil ->
@@ -405,6 +411,12 @@ defmodule Harness.Providers.CodexSession do
       {rpc_id, _request} ->
         response = JsonRpc.encode_response(rpc_id, %{"answers" => answers})
         send_to_port(state, response)
+
+        emit_event(state, :notification, "user-input/resolved", %{
+          "requestId" => request_id,
+          "answers" => answers
+        })
+
         {:reply, :ok, remove_pending(state, rpc_id)}
 
       nil ->
@@ -467,36 +479,53 @@ defmodule Harness.Providers.CodexSession do
   defp assert_codex_version(binary_path, codex_home) do
     env = if codex_home, do: [{"CODEX_HOME", codex_home}], else: []
 
-    try do
-      case System.cmd(binary_path, ["--version"],
-             env: env,
-             stderr_to_stdout: true,
-             timeout: @version_check_timeout_ms
-           ) do
-        {output, 0} ->
-          case parse_codex_version(output) do
-            {:ok, version} ->
-              if version_supported?(version) do
-                :ok
-              else
-                {:error, format_upgrade_message(version)}
-              end
-
-            :error ->
-              {:error,
-               "Could not parse Codex CLI version from output: #{String.slice(output, 0, 200)}"}
-          end
-
-        {output, code} ->
-          {:error,
-           "Codex CLI version check failed (exit #{code}): #{String.slice(output, 0, 200)}"}
-      end
-    rescue
-      e in ErlangError ->
-        case e.original do
-          :enoent -> {:error, "Codex CLI is not installed or not executable at: #{binary_path}"}
-          _ -> {:error, "Codex CLI version check failed: #{inspect(e)}"}
+    task =
+      Task.async(fn ->
+        try do
+          System.cmd(binary_path, ["--version"], env: env, stderr_to_stdout: true)
+        rescue
+          e -> {:rescue, e}
         end
+      end)
+
+    result = Task.yield(task, @version_check_timeout_ms)
+
+    result =
+      case result do
+        nil -> Task.shutdown(task)
+        other -> other
+      end
+
+    case result do
+      {:ok, {:rescue, %ErlangError{original: :enoent}}} ->
+        {:error, "Codex CLI is not installed or not executable at: #{binary_path}"}
+
+      {:ok, {:rescue, e}} ->
+        {:error, "Codex CLI version check failed: #{inspect(e)}"}
+
+      {:ok, {output, 0}} ->
+        case parse_codex_version(output) do
+          {:ok, version} ->
+            if version_supported?(version) do
+              :ok
+            else
+              {:error, format_upgrade_message(version)}
+            end
+
+          :error ->
+            {:error,
+             "Could not parse Codex CLI version from output: #{String.slice(output, 0, 200)}"}
+        end
+
+      {:ok, {output, code}} ->
+        {:error,
+         "Codex CLI version check failed (exit #{code}): #{String.slice(output, 0, 200)}"}
+
+      {:exit, reason} ->
+        {:error, "Codex CLI version check task exited: #{inspect(reason)}"}
+
+      nil ->
+        {:error, "Codex CLI version check timed out after #{@version_check_timeout_ms}ms"}
     end
   end
 
@@ -996,11 +1025,31 @@ defmodule Harness.Providers.CodexSession do
     %{state | pending: Map.delete(state.pending, id)}
   end
 
-  defp reject_all_pending(state, reason) do
+  defp reject_all_pending(state, _reason) do
     Enum.each(state.pending, fn
+      {_id, %{kind: :provider_request, params: params} = entry} ->
+        # Emit cancellation event so pending request row is cleaned up
+        request_id = Map.get(params, "requestId", "unknown")
+
+        if Map.get(entry, :method) in ["ask_user", "user_input", "elicitation"] do
+          emit_event(state, :notification, "user-input/resolved", %{
+            "requestId" => request_id,
+            "answers" => %{}
+          })
+        else
+          emit_event(state, :notification, "request/resolved", %{
+            "requestId" => request_id,
+            "decision" => "cancel"
+          })
+        end
+
+        # Reply to waiting caller if any
+        if entry[:from], do: GenServer.reply(entry.from, {:error, "Session terminated"})
+        if entry[:timer], do: Process.cancel_timer(entry.timer)
+
       {_id, %{from: from, timer: timer}} when not is_nil(from) ->
         if timer, do: Process.cancel_timer(timer)
-        GenServer.reply(from, {:error, reason})
+        GenServer.reply(from, {:error, "Session terminated"})
 
       _ ->
         :ok

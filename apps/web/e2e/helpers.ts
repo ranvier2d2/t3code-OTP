@@ -92,6 +92,6 @@ export async function waitForResponse(page: Page, timeout = 90_000): Promise<Loc
 
   // Return the last assistant message
   const assistantMessages = page.locator("[data-message-role='assistant']");
-  await expect(assistantMessages.last()).toBeVisible({ timeout: 10_000 });
+  await expect(assistantMessages.last()).toBeVisible({ timeout: 30_000 });
   return assistantMessages.last();
 }

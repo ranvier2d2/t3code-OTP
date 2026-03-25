@@ -173,6 +173,12 @@ defmodule Harness.SnapshotServer do
 
     sessions_map = Map.new(sessions, fn session -> {session.thread_id, session} end)
 
+    # Recover pending requests from dedicated table and merge into sessions.
+    # This is the authoritative source — more reliable than the JSON snapshot
+    # in harness_sessions which may be stale if BEAM crashed mid-persist.
+    pending = Harness.Storage.get_pending_requests()
+    sessions_map = merge_pending_into_sessions(sessions_map, pending)
+
     # Set sequence from SQL, NOT from Projector (avoids double-count)
     snapshot = %Snapshot{
       sequence: seq,
@@ -188,6 +194,30 @@ defmodule Harness.SnapshotServer do
     e -> {:error, e}
   catch
     :exit, reason -> {:error, reason}
+  end
+
+  defp merge_pending_into_sessions(sessions_map, pending_requests) do
+    # Group pending requests by thread_id, then merge into each session's pending_requests
+    grouped = Enum.group_by(pending_requests, & &1.thread_id)
+
+    Enum.reduce(grouped, sessions_map, fn {thread_id, reqs}, acc ->
+      case Map.get(acc, thread_id) do
+        nil ->
+          acc
+
+        session ->
+          merged_pending =
+            Map.new(reqs, fn req ->
+              {req.request_id, %{
+                method: req.method,
+                payload: req.payload,
+                created_at: req.created_at
+              }}
+            end)
+
+          Map.put(acc, thread_id, %{session | pending_requests: merged_pending})
+      end
+    end)
   end
 
   @stale_statuses [:running, :connecting]
@@ -300,6 +330,9 @@ defmodule Harness.SnapshotServer do
               })
           end
 
+          # Track pending requests in dedicated table
+          persist_pending_request(event)
+
         {:error, :duplicate_event} ->
           :ok
 
@@ -311,6 +344,29 @@ defmodule Harness.SnapshotServer do
         Logger.error("Storage unavailable: #{inspect(reason)}")
     end
   end
+
+  # INSERT on request/opened, DELETE on request/resolved
+  defp persist_pending_request(%Event{kind: :request} = event) do
+    request_id = get_in(event.payload, ["requestId"]) || event.event_id
+
+    Harness.Storage.insert_pending_request(%{
+      request_id: request_id,
+      thread_id: event.thread_id,
+      provider: event.provider,
+      request_type: get_in(event.payload, ["requestType"]) || "unknown",
+      method: event.method,
+      payload: event.payload,
+      created_at: event.created_at
+    })
+  end
+
+  defp persist_pending_request(%Event{kind: :notification, method: method} = event)
+       when method in ["request/resolved", "user-input/resolved"] do
+    request_id = get_in(event.payload, ["requestId"]) || event.event_id
+    Harness.Storage.resolve_pending_request(request_id)
+  end
+
+  defp persist_pending_request(_event), do: :ok
 
   # --- SQL replay fallback ---
 
