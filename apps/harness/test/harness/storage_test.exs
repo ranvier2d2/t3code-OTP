@@ -275,6 +275,69 @@ defmodule Harness.StorageTest do
     assert length(Storage.get_pending_requests()) == 0
   end
 
+  # --- Binding tests ---
+
+  test "upsert_binding creates and retrieves a binding" do
+    cursor = Jason.encode!(%{"threadId" => "codex-thread-abc"})
+    :ok = Storage.upsert_binding("t1", "codex", cursor)
+
+    binding = Storage.get_binding("t1")
+    assert binding.thread_id == "t1"
+    assert binding.provider == "codex"
+    assert binding.resume_cursor_json == cursor
+  end
+
+  test "upsert_binding updates existing binding" do
+    cursor1 = Jason.encode!(%{"threadId" => "old-thread"})
+    cursor2 = Jason.encode!(%{"threadId" => "new-thread"})
+
+    :ok = Storage.upsert_binding("t1", "codex", cursor1)
+    :ok = Storage.upsert_binding("t1", "codex", cursor2)
+
+    binding = Storage.get_binding("t1")
+    assert binding.resume_cursor_json == cursor2
+  end
+
+  test "get_binding returns nil for unknown thread" do
+    assert Storage.get_binding("nonexistent") == nil
+  end
+
+  test "delete_binding removes the row" do
+    :ok = Storage.upsert_binding("t1", "codex", ~s({"threadId":"abc"}))
+    assert Storage.get_binding("t1") != nil
+
+    :ok = Storage.delete_binding("t1")
+    assert Storage.get_binding("t1") == nil
+  end
+
+  test "delete_binding is idempotent" do
+    :ok = Storage.delete_binding("nonexistent")
+    assert Storage.get_binding("nonexistent") == nil
+  end
+
+  test "upsert_binding with nil cursor" do
+    :ok = Storage.upsert_binding("t1", "codex", nil)
+    binding = Storage.get_binding("t1")
+    assert binding.thread_id == "t1"
+    assert binding.resume_cursor_json == nil
+  end
+
+  test "reset! clears bindings" do
+    :ok = Storage.upsert_binding("t1", "codex", ~s({"threadId":"abc"}))
+    Storage.reset!()
+    assert Storage.get_binding("t1") == nil
+  end
+
+  test "bindings for different providers coexist" do
+    :ok = Storage.upsert_binding("t1", "codex", ~s({"threadId":"codex-1"}))
+    :ok = Storage.upsert_binding("t2", "cursor", ~s({"cursorChatId":"cursor-1"}))
+    :ok = Storage.upsert_binding("t3", "opencode", ~s({"sessionId":"oc-1"}))
+
+    assert Storage.get_binding("t1").provider == "codex"
+    assert Storage.get_binding("t2").provider == "cursor"
+    assert Storage.get_binding("t3").provider == "opencode"
+  end
+
   # --- Integration: SnapshotServer recovery ---
 
   describe "SnapshotServer recovery" do

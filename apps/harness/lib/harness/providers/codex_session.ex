@@ -739,6 +739,7 @@ defmodule Harness.Providers.CodexSession do
       {%{from: nil, method: "thread/start"}, pending} ->
         codex_id = get_in(result, ["thread", "id"])
         state = %{state | pending: pending, codex_thread_id: codex_id, ready: true}
+        persist_binding(state)
         Enum.each(state.ready_waiters, &GenServer.reply(&1, :ok))
         %{state | ready_waiters: []}
 
@@ -746,6 +747,7 @@ defmodule Harness.Providers.CodexSession do
         # Resume succeeded — same handling as thread/start
         codex_id = get_in(result, ["thread", "id"])
         state = %{state | pending: pending, codex_thread_id: codex_id, ready: true}
+        persist_binding(state)
         Enum.each(state.ready_waiters, &GenServer.reply(&1, :ok))
         %{state | ready_waiters: []}
 
@@ -765,6 +767,13 @@ defmodule Harness.Providers.CodexSession do
         # Resume failed — check if recoverable, fallback to thread/start
         message = Map.get(error, "message", "Unknown error")
         state = %{state | pending: pending}
+
+        # Delete stale binding before any retry — prevents livelock if
+        # the cursor is permanently invalid. This runs for both recoverable
+        # and non-recoverable failures intentionally: if resume failed, the
+        # cursor is suspect. The recoverable path falls back to thread/start
+        # which upserts a fresh binding on success.
+        Harness.Storage.delete_binding(state.thread_id)
 
         if is_recoverable_resume_error?(message) do
           Logger.info(
@@ -996,6 +1005,15 @@ defmodule Harness.Providers.CodexSession do
 
   defp send_to_port(%{port: port}, message) do
     Port.command(port, message <> "\n")
+  end
+
+  defp persist_binding(state) do
+    cursor_json =
+      if state.codex_thread_id do
+        Jason.encode!(%{"threadId" => state.codex_thread_id})
+      end
+
+    Harness.Storage.upsert_binding(state.thread_id, state.provider, cursor_json)
   end
 
   defp emit_event(state, kind, method, payload) do
