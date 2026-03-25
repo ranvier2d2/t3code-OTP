@@ -86,6 +86,9 @@ defmodule Harness.Dev.Inspect do
   def bridge do
     {snapshot, wal_stats} = fetch_snapshot_and_wal()
 
+    # Pending request stats from SQLite (authoritative source)
+    pending_stats = pending_request_stats()
+
     %{
       elixir_side_only: true,
       endpoint_running: Process.whereis(HarnessWeb.Endpoint) != nil,
@@ -98,11 +101,35 @@ defmodule Harness.Dev.Inspect do
         session_count: map_size(snapshot[:sessions] || %{})
       },
       wal: wal_stats,
+      pending_requests: pending_stats,
       timestamp: now_ms()
     }
   end
 
   # --- Private ---
+
+  defp pending_request_stats do
+    try do
+      pending = Harness.Storage.get_pending_requests()
+      by_provider = Enum.group_by(pending, & &1.provider)
+      by_type = Enum.group_by(pending, & &1.request_type)
+
+      oldest =
+        case pending do
+          [] -> nil
+          list -> Enum.min_by(list, & &1.created_at) |> Map.get(:created_at)
+        end
+
+      %{
+        total: length(pending),
+        by_provider: Map.new(by_provider, fn {k, v} -> {k, length(v)} end),
+        by_type: Map.new(by_type, fn {k, v} -> {k, length(v)} end),
+        oldest_created_at: oldest
+      }
+    catch
+      :exit, _ -> %{total: 0, error: "storage_unavailable"}
+    end
+  end
 
   defp find_session_pid(thread_id) do
     case Registry.lookup(Harness.SessionRegistry, thread_id) do

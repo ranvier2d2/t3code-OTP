@@ -52,10 +52,14 @@ defmodule Harness.StorageTest do
     {:ok, _} = Storage.start_link(db_path: ":memory:")
 
     on_exit(fn ->
-      # Restart the Application-managed versions
-      case Process.whereis(Storage) do
-        nil -> :ok
-        pid -> GenServer.stop(pid)
+      # Restart the Application-managed versions (best-effort cleanup)
+      try do
+        case Process.whereis(Storage) do
+          nil -> :ok
+          pid -> GenServer.stop(pid)
+        end
+      catch
+        :exit, _ -> :ok
       end
 
       Supervisor.restart_child(Harness.Supervisor, Storage)

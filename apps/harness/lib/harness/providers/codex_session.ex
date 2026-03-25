@@ -392,6 +392,12 @@ defmodule Harness.Providers.CodexSession do
       {rpc_id, _request} ->
         response = JsonRpc.encode_response(rpc_id, %{"decision" => decision})
         send_to_port(state, response)
+
+        emit_event(state, :notification, "request/resolved", %{
+          "requestId" => request_id,
+          "decision" => decision
+        })
+
         {:reply, :ok, remove_pending(state, rpc_id)}
 
       nil ->
@@ -405,6 +411,12 @@ defmodule Harness.Providers.CodexSession do
       {rpc_id, _request} ->
         response = JsonRpc.encode_response(rpc_id, %{"answers" => answers})
         send_to_port(state, response)
+
+        emit_event(state, :notification, "user-input/resolved", %{
+          "requestId" => request_id,
+          "answers" => answers
+        })
+
         {:reply, :ok, remove_pending(state, rpc_id)}
 
       nil ->
@@ -1002,11 +1014,31 @@ defmodule Harness.Providers.CodexSession do
     %{state | pending: Map.delete(state.pending, id)}
   end
 
-  defp reject_all_pending(state, reason) do
+  defp reject_all_pending(state, _reason) do
     Enum.each(state.pending, fn
+      {_id, %{kind: :provider_request, params: params} = entry} ->
+        # Emit cancellation event so pending request row is cleaned up
+        request_id = Map.get(params, "requestId", "unknown")
+
+        if Map.get(entry, :method) in ["ask_user", "user_input", "elicitation"] do
+          emit_event(state, :notification, "user-input/resolved", %{
+            "requestId" => request_id,
+            "answers" => %{}
+          })
+        else
+          emit_event(state, :notification, "request/resolved", %{
+            "requestId" => request_id,
+            "decision" => "cancel"
+          })
+        end
+
+        # Reply to waiting caller if any
+        if entry[:from], do: GenServer.reply(entry.from, {:error, "Session terminated"})
+        if entry[:timer], do: Process.cancel_timer(entry.timer)
+
       {_id, %{from: from, timer: timer}} when not is_nil(from) ->
         if timer, do: Process.cancel_timer(timer)
-        GenServer.reply(from, {:error, reason})
+        GenServer.reply(from, {:error, "Session terminated"})
 
       _ ->
         :ok

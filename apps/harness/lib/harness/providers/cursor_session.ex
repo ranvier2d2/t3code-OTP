@@ -344,6 +344,7 @@ defmodule Harness.Providers.CursorSession do
     # to any messages processed after Port.close sends the exit notification.
     state = %{state | stopped: true}
     maybe_complete_turn(state, "completed")
+    cancel_all_pending(state)
 
     if port do
       try do
@@ -354,6 +355,17 @@ defmodule Harness.Providers.CursorSession do
     end
 
     :ok
+  end
+
+  defp cancel_all_pending(state) do
+    Enum.each(state.pending_approvals, fn {request_id, _pending} ->
+      emit_event(state, :notification, "request/resolved", %{
+        "requestId" => request_id,
+        "decision" => "cancel"
+      })
+    end)
+
+    # Cursor doesn't have separate user-input tracking, but cancel anything remaining
   end
 
   # --- Session Creation & Recovery ---
