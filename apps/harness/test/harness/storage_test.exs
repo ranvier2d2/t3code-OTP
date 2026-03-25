@@ -190,6 +190,87 @@ defmodule Harness.StorageTest do
     assert session.pending_requests == pending
   end
 
+  # --- Pending request tests ---
+
+  test "insert and retrieve pending requests" do
+    :ok = Storage.insert_pending_request(%{
+      request_id: "req-1",
+      thread_id: "t1",
+      provider: "codex",
+      request_type: "command_execution_approval",
+      method: "request/opened",
+      payload: %{"tool" => "bash", "command" => "ls"},
+      created_at: "2026-03-25T20:00:00Z"
+    })
+
+    pending = Storage.get_pending_requests()
+    assert length(pending) == 1
+    assert hd(pending).request_id == "req-1"
+    assert hd(pending).request_type == "command_execution_approval"
+    assert hd(pending).payload["tool"] == "bash"
+  end
+
+  test "resolve_pending_request deletes the row" do
+    :ok = Storage.insert_pending_request(%{
+      request_id: "req-1",
+      thread_id: "t1",
+      provider: "codex",
+      request_type: "command_execution_approval",
+      payload: %{},
+      created_at: "2026-03-25T20:00:00Z"
+    })
+
+    assert length(Storage.get_pending_requests()) == 1
+    :ok = Storage.resolve_pending_request("req-1")
+    assert length(Storage.get_pending_requests()) == 0
+  end
+
+  test "get_pending_requests filters by thread_id" do
+    for {req_id, thread} <- [{"r1", "t1"}, {"r2", "t1"}, {"r3", "t2"}] do
+      :ok = Storage.insert_pending_request(%{
+        request_id: req_id,
+        thread_id: thread,
+        provider: "codex",
+        request_type: "approval",
+        payload: %{},
+        created_at: "2026-03-25T20:00:00Z"
+      })
+    end
+
+    assert length(Storage.get_pending_requests("t1")) == 2
+    assert length(Storage.get_pending_requests("t2")) == 1
+    assert length(Storage.get_pending_requests()) == 3
+  end
+
+  test "insert_pending_request is idempotent on request_id" do
+    req = %{
+      request_id: "req-1",
+      thread_id: "t1",
+      provider: "codex",
+      request_type: "approval",
+      payload: %{},
+      created_at: "2026-03-25T20:00:00Z"
+    }
+
+    :ok = Storage.insert_pending_request(req)
+    :ok = Storage.insert_pending_request(req)
+    assert length(Storage.get_pending_requests()) == 1
+  end
+
+  test "reset! clears pending requests" do
+    :ok = Storage.insert_pending_request(%{
+      request_id: "req-1",
+      thread_id: "t1",
+      provider: "codex",
+      request_type: "approval",
+      payload: %{},
+      created_at: "2026-03-25T20:00:00Z"
+    })
+
+    Storage.reset!()
+    assert length(Storage.get_pending_requests()) == 0
+  end
+
   # --- Integration: SnapshotServer recovery ---
 
   describe "SnapshotServer recovery" do
@@ -270,6 +351,129 @@ defmodule Harness.StorageTest do
       assert map_size(snapshot_after[:sessions]) == 1
       assert snapshot_after[:sessions]["t1"][:status] == "ready"
       assert snapshot_after[:sequence] == 2
+    end
+
+    test "pending requests survive restart and merge into sessions" do
+      # Create session
+      SnapshotServer.apply_event(
+        Event.new(%{
+          thread_id: "t1",
+          provider: "codex",
+          kind: :session,
+          method: "session/connecting",
+          payload: %{"model" => "gpt-5.4", "cwd" => "/tmp", "runtimeMode" => "full-access"}
+        })
+      )
+
+      SnapshotServer.apply_event(
+        Event.new(%{
+          thread_id: "t1",
+          provider: "codex",
+          kind: :session,
+          method: "session/ready",
+          payload: %{}
+        })
+      )
+
+      # Emit a pending approval request
+      SnapshotServer.apply_event(
+        Event.new(%{
+          thread_id: "t1",
+          provider: "codex",
+          kind: :request,
+          method: "request/opened",
+          payload: %{
+            "requestId" => "approval-1",
+            "requestType" => "command_execution_approval",
+            "tool" => "bash",
+            "command" => "rm -rf /tmp/test"
+          }
+        })
+      )
+
+      Process.sleep(50)
+
+      # Verify pending request exists before restart
+      snapshot_before = SnapshotServer.get_snapshot()
+      pending_before = snapshot_before[:sessions]["t1"][:pendingRequests]
+      assert map_size(pending_before) == 1
+      assert Map.has_key?(pending_before, "approval-1")
+
+      # Verify pending request is in dedicated table
+      assert length(Storage.get_pending_requests("t1")) == 1
+
+      # Kill and restart SnapshotServer (simulates BEAM crash)
+      GenServer.stop(SnapshotServer)
+      {:ok, _} = SnapshotServer.start_link(nil)
+
+      # Verify pending request survives restart
+      snapshot_after = SnapshotServer.get_snapshot()
+      pending_after = snapshot_after[:sessions]["t1"][:pendingRequests]
+      assert map_size(pending_after) == 1
+      assert Map.has_key?(pending_after, "approval-1")
+    end
+
+    test "user-input/resolved clears pending request (not just request/resolved)" do
+      # Create session
+      SnapshotServer.apply_event(
+        Event.new(%{
+          thread_id: "t1",
+          provider: "claudeAgent",
+          kind: :session,
+          method: "session/connecting",
+          payload: %{"model" => "claude-sonnet-4-6", "cwd" => "/tmp", "runtimeMode" => "full-access"}
+        })
+      )
+
+      SnapshotServer.apply_event(
+        Event.new(%{
+          thread_id: "t1",
+          provider: "claudeAgent",
+          kind: :session,
+          method: "session/ready",
+          payload: %{}
+        })
+      )
+
+      # Emit a user-input request (elicitation)
+      SnapshotServer.apply_event(
+        Event.new(%{
+          thread_id: "t1",
+          provider: "claudeAgent",
+          kind: :request,
+          method: "request/opened",
+          payload: %{
+            "requestId" => "input-1",
+            "requestType" => "user_input",
+            "question" => "Continue with this approach?"
+          }
+        })
+      )
+
+      Process.sleep(50)
+
+      # Pending exists in both snapshot and SQLite
+      assert length(Storage.get_pending_requests("t1")) == 1
+
+      # Resolve via user-input/resolved (Claude's method, not request/resolved)
+      SnapshotServer.apply_event(
+        Event.new(%{
+          thread_id: "t1",
+          provider: "claudeAgent",
+          kind: :notification,
+          method: "user-input/resolved",
+          payload: %{"requestId" => "input-1", "answers" => %{"choice" => "yes"}}
+        })
+      )
+
+      Process.sleep(50)
+
+      # Row should be deleted from SQLite
+      assert length(Storage.get_pending_requests("t1")) == 0
+
+      # And from snapshot
+      snapshot = SnapshotServer.get_snapshot()
+      assert map_size(snapshot[:sessions]["t1"][:pendingRequests]) == 0
     end
 
     test "replay falls back to SQL after restart (WAL empty)" do

@@ -49,6 +49,21 @@ defmodule Harness.Storage do
     GenServer.call(__MODULE__, :get_event_count)
   end
 
+  @doc "Insert a pending request (approval or elicitation). Idempotent on request_id."
+  def insert_pending_request(request_map) do
+    GenServer.call(__MODULE__, {:insert_pending_request, request_map})
+  end
+
+  @doc "Mark a pending request as resolved. Deletes the row."
+  def resolve_pending_request(request_id) do
+    GenServer.call(__MODULE__, {:resolve_pending_request, request_id})
+  end
+
+  @doc "Get all unresolved pending requests, optionally filtered by thread_id."
+  def get_pending_requests(thread_id \\ nil) do
+    GenServer.call(__MODULE__, {:get_pending_requests, thread_id})
+  end
+
   @doc "Truncate all tables. Test-only."
   def reset! do
     GenServer.call(__MODULE__, :reset)
@@ -101,7 +116,23 @@ defmodule Harness.Storage do
     {:reply, count, state}
   end
 
+  def handle_call({:insert_pending_request, request_map}, _from, %{conn: conn} = state) do
+    result = do_insert_pending_request(conn, request_map)
+    {:reply, result, state}
+  end
+
+  def handle_call({:resolve_pending_request, request_id}, _from, %{conn: conn} = state) do
+    result = do_resolve_pending_request(conn, request_id)
+    {:reply, result, state}
+  end
+
+  def handle_call({:get_pending_requests, thread_id}, _from, %{conn: conn} = state) do
+    result = do_get_pending_requests(conn, thread_id)
+    {:reply, result, state}
+  end
+
   def handle_call(:reset, _from, %{conn: conn} = state) do
+    Sqlite3.execute(conn, "DELETE FROM harness_pending_requests")
     Sqlite3.execute(conn, "DELETE FROM harness_events")
     Sqlite3.execute(conn, "DELETE FROM harness_sessions")
     {:reply, :ok, state}
@@ -179,6 +210,25 @@ defmodule Harness.Storage do
       updated_at TEXT,
       last_sequence INTEGER NOT NULL DEFAULT 0
     )
+    """)
+
+    # Pending requests: approvals + elicitations that survive BEAM restarts.
+    # Rows are INSERTed on request/opened and DELETEd on request/resolved.
+    Sqlite3.execute(conn, """
+    CREATE TABLE IF NOT EXISTS harness_pending_requests (
+      request_id TEXT PRIMARY KEY,
+      thread_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      request_type TEXT NOT NULL,
+      method TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )
+    """)
+
+    Sqlite3.execute(conn, """
+    CREATE INDEX IF NOT EXISTS idx_pending_reqs_thread
+      ON harness_pending_requests(thread_id)
     """)
   end
 
@@ -280,6 +330,74 @@ defmodule Harness.Storage do
     after
       Sqlite3.release(conn, stmt)
     end
+  end
+
+  # --- Pending request operations ---
+
+  defp do_insert_pending_request(conn, req) do
+    sql = """
+    INSERT OR IGNORE INTO harness_pending_requests
+      (request_id, thread_id, provider, request_type, method, payload_json, created_at)
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+    """
+
+    payload_json = if req[:payload], do: Jason.encode!(req.payload), else: "{}"
+
+    params = [
+      req.request_id,
+      req.thread_id,
+      req.provider,
+      req[:request_type] || "unknown",
+      req[:method] || "request/opened",
+      payload_json,
+      req[:created_at] || DateTime.utc_now() |> DateTime.to_iso8601()
+    ]
+
+    {:ok, stmt} = Sqlite3.prepare(conn, sql)
+
+    try do
+      :ok = Sqlite3.bind(stmt, params)
+      :done = Sqlite3.step(conn, stmt)
+      :ok
+    after
+      Sqlite3.release(conn, stmt)
+    end
+  end
+
+  defp do_resolve_pending_request(conn, request_id) do
+    sql = "DELETE FROM harness_pending_requests WHERE request_id = ?1"
+    {:ok, stmt} = Sqlite3.prepare(conn, sql)
+
+    try do
+      :ok = Sqlite3.bind(stmt, [request_id])
+      :done = Sqlite3.step(conn, stmt)
+      :ok
+    after
+      Sqlite3.release(conn, stmt)
+    end
+  end
+
+  defp do_get_pending_requests(conn, nil) do
+    sql = """
+    SELECT request_id, thread_id, provider, request_type, method, payload_json, created_at
+    FROM harness_pending_requests
+    ORDER BY created_at ASC
+    """
+
+    query_all(conn, sql, [])
+    |> Enum.map(&row_to_pending_request/1)
+  end
+
+  defp do_get_pending_requests(conn, thread_id) do
+    sql = """
+    SELECT request_id, thread_id, provider, request_type, method, payload_json, created_at
+    FROM harness_pending_requests
+    WHERE thread_id = ?1
+    ORDER BY created_at ASC
+    """
+
+    query_all(conn, sql, [thread_id])
+    |> Enum.map(&row_to_pending_request/1)
   end
 
   # --- Session queries ---
@@ -411,6 +529,18 @@ defmodule Harness.Storage do
       kind: kind,
       method: method,
       payload: decode_json(payload_json)
+    }
+  end
+
+  defp row_to_pending_request([request_id, thread_id, provider, request_type, method, payload_json, created_at]) do
+    %{
+      request_id: request_id,
+      thread_id: thread_id,
+      provider: provider,
+      request_type: request_type,
+      method: method,
+      payload: decode_json(payload_json) || %{},
+      created_at: created_at
     }
   end
 

@@ -467,36 +467,42 @@ defmodule Harness.Providers.CodexSession do
   defp assert_codex_version(binary_path, codex_home) do
     env = if codex_home, do: [{"CODEX_HOME", codex_home}], else: []
 
-    try do
-      case System.cmd(binary_path, ["--version"],
-             env: env,
-             stderr_to_stdout: true,
-             timeout: @version_check_timeout_ms
-           ) do
-        {output, 0} ->
-          case parse_codex_version(output) do
-            {:ok, version} ->
-              if version_supported?(version) do
-                :ok
-              else
-                {:error, format_upgrade_message(version)}
-              end
-
-            :error ->
-              {:error,
-               "Could not parse Codex CLI version from output: #{String.slice(output, 0, 200)}"}
-          end
-
-        {output, code} ->
-          {:error,
-           "Codex CLI version check failed (exit #{code}): #{String.slice(output, 0, 200)}"}
-      end
-    rescue
-      e in ErlangError ->
-        case e.original do
-          :enoent -> {:error, "Codex CLI is not installed or not executable at: #{binary_path}"}
-          _ -> {:error, "Codex CLI version check failed: #{inspect(e)}"}
+    task =
+      Task.async(fn ->
+        try do
+          System.cmd(binary_path, ["--version"], env: env, stderr_to_stdout: true)
+        rescue
+          e -> {:rescue, e}
         end
+      end)
+
+    case Task.yield(task, @version_check_timeout_ms) || Task.shutdown(task) do
+      {:ok, {:rescue, %ErlangError{original: :enoent}}} ->
+        {:error, "Codex CLI is not installed or not executable at: #{binary_path}"}
+
+      {:ok, {:rescue, e}} ->
+        {:error, "Codex CLI version check failed: #{inspect(e)}"}
+
+      {:ok, {output, 0}} ->
+        case parse_codex_version(output) do
+          {:ok, version} ->
+            if version_supported?(version) do
+              :ok
+            else
+              {:error, format_upgrade_message(version)}
+            end
+
+          :error ->
+            {:error,
+             "Could not parse Codex CLI version from output: #{String.slice(output, 0, 200)}"}
+        end
+
+      {:ok, {output, code}} ->
+        {:error,
+         "Codex CLI version check failed (exit #{code}): #{String.slice(output, 0, 200)}"}
+
+      nil ->
+        {:error, "Codex CLI version check timed out after #{@version_check_timeout_ms}ms"}
     end
   end
 

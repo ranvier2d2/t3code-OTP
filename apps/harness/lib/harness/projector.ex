@@ -109,7 +109,8 @@ defmodule Harness.Projector do
 
   # --- Notification events that resolve pending requests ---
 
-  defp apply_event(snapshot, %Event{kind: :notification, method: "request/resolved"} = event) do
+  defp apply_event(snapshot, %Event{kind: :notification, method: method} = event)
+       when method in ["request/resolved", "user-input/resolved"] do
     request_id = get_in(event.payload, ["requestId"]) || event.event_id
 
     update_session(snapshot, event.thread_id, fn session ->
