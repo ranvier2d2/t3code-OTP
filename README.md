@@ -29,17 +29,17 @@ Once you manage several concurrent agent sessions — each with its own protocol
 
 The engine owns supervision, crash isolation, and per-session memory containment. Node keeps SDK access, TypeScript contracts, desktop integration, and the orchestration layer. Both runtimes share SQLite for durability.
 
-| Concern                            | Owner       |
-| ---------------------------------- | ----------- |
-| Provider process lifecycle         | Elixir      |
-| Crash isolation + supervision      | Elixir      |
-| Per-session memory containment     | Elixir      |
+| Concern                            | Owner         |
+| ---------------------------------- | ------------- |
+| Provider process lifecycle         | Elixir        |
+| Crash isolation + supervision      | Elixir        |
+| Per-session memory containment     | Elixir        |
 | Session + event durability         | Both (SQLite) |
-| Pending request crash recovery     | Elixir      |
-| Canonical event mapping (TS types) | Node        |
-| Claude Agent SDK                   | Node        |
-| Browser/Electron WebSocket         | Node        |
-| Desktop + product integration      | Node        |
+| Pending request crash recovery     | Elixir        |
+| Canonical event mapping (TS types) | Node          |
+| Claude Agent SDK                   | Node          |
+| Browser/Electron WebSocket         | Node          |
+| Desktop + product integration      | Node          |
 
 ---
 
@@ -140,19 +140,19 @@ python3 output/stress-test/viz-real.py
 
 ### Elixir harness (`apps/harness/`)
 
-| Module             | Role                                              |
-| ------------------ | ------------------------------------------------- |
-| `SessionManager`   | DynamicSupervisor routing, session lifecycle       |
-| `CodexSession`     | Codex JSON-RPC GenServer                           |
-| `CursorSession`    | Cursor stream-json + tool mapping                  |
-| `OpenCodeSession`  | OpenCode HTTP+SSE + tool mapping                   |
-| `ClaudeSession`    | Claude CLI GenServer (stress tests only)           |
-| `MockSession`      | Configurable mock for stress testing               |
-| `SnapshotServer`   | In-memory event store + WAL replay + recovery      |
-| `Storage`          | SQLite durability (sessions, events, pending reqs) |
-| `Projector`        | Pure event → snapshot projection                   |
-| `ModelDiscovery`   | CLI-based model listing with ETS cache             |
-| `HarnessChannel`   | Phoenix Channel — single WS entry point            |
+| Module            | Role                                               |
+| ----------------- | -------------------------------------------------- |
+| `SessionManager`  | DynamicSupervisor routing, session lifecycle       |
+| `CodexSession`    | Codex JSON-RPC GenServer                           |
+| `CursorSession`   | Cursor stream-json + tool mapping                  |
+| `OpenCodeSession` | OpenCode HTTP+SSE + tool mapping                   |
+| `ClaudeSession`   | Claude CLI GenServer (stress tests only)           |
+| `MockSession`     | Configurable mock for stress testing               |
+| `SnapshotServer`  | In-memory event store + WAL replay + recovery      |
+| `Storage`         | SQLite durability (sessions, events, pending reqs) |
+| `Projector`       | Pure event → snapshot projection                   |
+| `ModelDiscovery`  | CLI-based model listing with ETS cache             |
+| `HarnessChannel`  | Phoenix Channel — single WS entry point            |
 
 ### Node integration
 
@@ -160,8 +160,8 @@ python3 output/stress-test/viz-real.py
 | ------------------------- | ----------------------------------------------------------- |
 | `HarnessClientAdapter.ts` | Single adapter: all 13 `ProviderAdapterShape` methods       |
 | `HarnessClientManager.ts` | Phoenix Channel WS client with reconnection                 |
-| `codexEventMapping.ts`    | Canonical event mapping (shared with existing CodexAdapter)  |
-| `ClaudeAdapter.ts`        | Claude Agent SDK adapter (Node-native, not via harness)      |
+| `codexEventMapping.ts`    | Canonical event mapping (shared with existing CodexAdapter) |
+| `ClaudeAdapter.ts`        | Claude Agent SDK adapter (Node-native, not via harness)     |
 
 ---
 
