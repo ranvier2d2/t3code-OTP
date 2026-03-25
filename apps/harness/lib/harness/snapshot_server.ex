@@ -180,11 +180,80 @@ defmodule Harness.SnapshotServer do
       sessions: sessions_map
     }
 
+    # Reconcile stale sessions: running/connecting → error (no live GenServer after restart)
+    {snapshot, seq} = reconcile_stale_sessions(snapshot, seq)
+
     {:ok, snapshot, seq}
   rescue
     e -> {:error, e}
   catch
     :exit, reason -> {:error, reason}
+  end
+
+  @stale_statuses [:running, :connecting]
+
+  defp reconcile_stale_sessions(snapshot, seq) do
+    stale =
+      Enum.filter(snapshot.sessions, fn {_tid, session} ->
+        session.status in @stale_statuses
+      end)
+
+    if stale == [] do
+      {snapshot, seq}
+    else
+      Logger.info("Reconciling #{length(stale)} stale sessions (running/connecting → error)")
+
+      Enum.reduce(stale, {snapshot, seq}, fn {thread_id, session}, {snap, current_seq} ->
+        new_seq = current_seq + 1
+        now = DateTime.utc_now() |> DateTime.to_iso8601()
+        prev_status = Atom.to_string(session.status)
+
+        # Update session in snapshot
+        updated_session = %{session | status: :error, active_turn: nil, updated_at: now}
+        updated_snap = put_in(snap.sessions[thread_id], updated_session)
+        updated_snap = %{updated_snap | sequence: new_seq}
+
+        # Persist synthetic reconciliation event to SQL (best-effort)
+        try do
+          case Harness.Storage.insert_event(%{
+                 event_id: "reconcile-#{thread_id}-#{new_seq}",
+                 thread_id: thread_id,
+                 provider: session.provider,
+                 kind: "session",
+                 method: "session/error",
+                 payload: %{"reason" => "runtime_restarted", "previousStatus" => prev_status},
+                 created_at: now
+               }) do
+            {:ok, _seq} ->
+              case Harness.Storage.upsert_session(%{
+                     thread_id: thread_id,
+                     provider: session.provider,
+                     status: :error,
+                     model: session.model,
+                     cwd: session.cwd,
+                     runtime_mode: session.runtime_mode,
+                     active_turn: nil,
+                     pending_requests: session.pending_requests,
+                     created_at: session.created_at,
+                     updated_at: now,
+                     last_sequence: new_seq
+                   }) do
+                :ok -> :ok
+                {:error, reason} ->
+                  Logger.error("Reconciliation upsert failed for #{thread_id}: #{inspect(reason)}")
+              end
+
+            {:error, reason} ->
+              Logger.error("Reconciliation event insert failed for #{thread_id}: #{inspect(reason)}")
+          end
+        catch
+          :exit, reason ->
+            Logger.error("Failed to persist reconciliation for #{thread_id}: #{inspect(reason)}")
+        end
+
+        {updated_snap, new_seq}
+      end)
+    end
   end
 
   defp latest_updated_at([]), do: nil

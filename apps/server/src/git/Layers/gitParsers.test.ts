@@ -281,9 +281,7 @@ describe("normalizeRemoteUrl", () => {
     expect(normalizeRemoteUrl("https://github.com/org/repo.git")).toBe(
       "https://github.com/org/repo",
     );
-    expect(normalizeRemoteUrl("https://github.com/org/repo/")).toBe(
-      "https://github.com/org/repo",
-    );
+    expect(normalizeRemoteUrl("https://github.com/org/repo/")).toBe("https://github.com/org/repo");
     expect(normalizeRemoteUrl("https://github.com/org/repo.GIT///")).toBe(
       "https://github.com/org/repo",
     );
@@ -401,9 +399,9 @@ describe("deriveLocalBranchNameFromRemoteRef", () => {
 describe("parseDefaultBranchFromRemoteHeadRef", () => {
   it("extracts branch name from remote HEAD ref", () => {
     expect(parseDefaultBranchFromRemoteHeadRef("refs/remotes/origin/main", "origin")).toBe("main");
-    expect(
-      parseDefaultBranchFromRemoteHeadRef("refs/remotes/upstream/develop", "upstream"),
-    ).toBe("develop");
+    expect(parseDefaultBranchFromRemoteHeadRef("refs/remotes/upstream/develop", "upstream")).toBe(
+      "develop",
+    );
   });
 
   it("returns null for non-matching prefix", () => {

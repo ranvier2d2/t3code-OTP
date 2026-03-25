@@ -7,9 +7,11 @@ harness_secret = System.get_env("T3CODE_HARNESS_SECRET", "dev-harness-secret")
 config :harness,
   harness_secret: harness_secret
 
-config :harness, HarnessWeb.Endpoint,
-  http: [port: harness_port],
-  server: true
+if config_env() != :test do
+  config :harness, HarnessWeb.Endpoint,
+    http: [port: harness_port],
+    server: true
+end
 
 if config_env() == :prod do
   trimmed_secret = String.trim(harness_secret || "")

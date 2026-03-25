@@ -22,7 +22,11 @@ __screenshots__/
 .tanstack
 
 # Internal artifacts (not for public repo)
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/hooks
+.claude/hooks/*
+!.claude/hooks/guard-gh-pr-create.sh
 output/
 hello.txt
 test-e2e.txt
