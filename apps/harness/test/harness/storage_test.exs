@@ -339,7 +339,7 @@ defmodule Harness.StorageTest do
       )
 
       # Give cast time to process
-      Process.sleep(50)
+      _ = :sys.get_state(SnapshotServer)
 
       # Verify snapshot before restart
       snapshot_before = SnapshotServer.get_snapshot()
@@ -395,7 +395,7 @@ defmodule Harness.StorageTest do
         })
       )
 
-      Process.sleep(50)
+      _ = :sys.get_state(SnapshotServer)
 
       # Verify pending request exists before restart
       snapshot_before = SnapshotServer.get_snapshot()
@@ -454,7 +454,7 @@ defmodule Harness.StorageTest do
         })
       )
 
-      Process.sleep(50)
+      _ = :sys.get_state(SnapshotServer)
 
       # Pending exists in both snapshot and SQLite
       assert length(Storage.get_pending_requests("t1")) == 1
@@ -470,7 +470,7 @@ defmodule Harness.StorageTest do
         })
       )
 
-      Process.sleep(50)
+      _ = :sys.get_state(SnapshotServer)
 
       # Row should be deleted from SQLite
       assert length(Storage.get_pending_requests("t1")) == 0
@@ -495,7 +495,7 @@ defmodule Harness.StorageTest do
         )
       end
 
-      Process.sleep(50)
+      _ = :sys.get_state(SnapshotServer)
 
       # Restart — WAL is now empty
       GenServer.stop(SnapshotServer)

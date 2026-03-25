@@ -488,7 +488,15 @@ defmodule Harness.Providers.CodexSession do
         end
       end)
 
-    case Task.yield(task, @version_check_timeout_ms) || Task.shutdown(task) do
+    result = Task.yield(task, @version_check_timeout_ms)
+
+    result =
+      case result do
+        nil -> Task.shutdown(task)
+        other -> other
+      end
+
+    case result do
       {:ok, {:rescue, %ErlangError{original: :enoent}}} ->
         {:error, "Codex CLI is not installed or not executable at: #{binary_path}"}
 
@@ -512,6 +520,9 @@ defmodule Harness.Providers.CodexSession do
       {:ok, {output, code}} ->
         {:error,
          "Codex CLI version check failed (exit #{code}): #{String.slice(output, 0, 200)}"}
+
+      {:exit, reason} ->
+        {:error, "Codex CLI version check task exited: #{inspect(reason)}"}
 
       nil ->
         {:error, "Codex CLI version check timed out after #{@version_check_timeout_ms}ms"}
