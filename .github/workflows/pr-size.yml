@@ -54,63 +54,6 @@ jobs:
             ];
 
             core.setOutput("labels_json", JSON.stringify(managedLabels));
-  sync-label-definitions:
-    name: Sync PR size label definitions
-    needs: prepare-config
-    if: github.event_name != 'pull_request_target'
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    permissions:
-      contents: read
-      issues: write
-    steps:
-      - name: Ensure PR size labels exist
-        uses: actions/github-script@v8
-        env:
-          PR_SIZE_LABELS_JSON: ${{ needs.prepare-config.outputs.labels_json }}
-        with:
-          script: |
-            const managedLabels = JSON.parse(process.env.PR_SIZE_LABELS_JSON ?? "[]");
-
-            for (const label of managedLabels) {
-              try {
-                const { data: existing } = await github.rest.issues.getLabel({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  name: label.name,
-                });
-
-                if (
-                  existing.color !== label.color ||
-                  (existing.description ?? "") !== label.description
-                ) {
-                  await github.rest.issues.updateLabel({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    name: label.name,
-                    color: label.color,
-                    description: label.description,
-                  });
-                }
-              } catch (error) {
-                if (error.status !== 404) {
-                  throw error;
-                }
-
-                try {
-                  await github.rest.issues.createLabel({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    name: label.name,
-                    color: label.color,
-                    description: label.description,
-                  });
-                } catch (createError) {
-                  if (createError.status !== 422) {
-                    throw createError;
-                  }
-                }
-              }
-            }
   label:
     name: Label PR size
     needs: prepare-config

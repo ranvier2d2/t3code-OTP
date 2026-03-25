@@ -9,7 +9,6 @@ on:
 
 jobs:
   quality:
-    name: Format, Lint, Typecheck, Test, Browser Test, Build
     runs-on: blacksmith-4vcpu-ubuntu-2404
     # Only run on PRs from trusted authors (vouch:trusted label) or pushes to main.
     # This prevents fork PRs from consuming Blacksmith minutes without maintainer approval.

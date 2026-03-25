@@ -5,21 +5,25 @@ defmodule Harness.SnapshotServer do
   On each harness event:
   1. Assigns a monotonic sequence number
   2. Projects the event into the snapshot via Projector
-  3. Appends to the WAL (write-ahead log) ring buffer for replay on reconnect
-  4. Broadcasts the event via PubSub for Channel subscribers
-  5. Serves snapshot queries and replay requests
+  3. Persists event + session to SQLite (best-effort)
+  4. Appends to the WAL (write-ahead log) ring buffer for fast replay
+  5. Broadcasts the event via PubSub for Channel subscribers
+  6. Serves snapshot queries and replay requests
+
+  On startup, recovers session state and sequence counter from SQLite.
   """
   use GenServer
+  require Logger
 
   alias Harness.Snapshot
   alias Harness.Projector
   alias Harness.Event
 
-  # Ring buffer size — last N events retained for reconnection replay
+  # Ring buffer size — last N events retained as hot cache for fast replay
   @wal_max_size 500
 
   def start_link(_opts) do
-    GenServer.start_link(__MODULE__, %Snapshot{}, name: __MODULE__)
+    GenServer.start_link(__MODULE__, nil, name: __MODULE__)
   end
 
   @doc """
@@ -48,7 +52,7 @@ defmodule Harness.SnapshotServer do
   Replay events since a given sequence number.
   Returns {current_seq, missed_events} where missed_events is a list of
   event maps with seq >= after_seq, ordered oldest-first.
-  If after_seq is too old (evicted from the ring buffer), returns :gap.
+  Falls back to SQLite when the ring buffer cannot serve the request.
   """
   def replay_since(after_seq) do
     GenServer.call(__MODULE__, {:replay_since, after_seq})
@@ -57,8 +61,19 @@ defmodule Harness.SnapshotServer do
   # --- Callbacks ---
 
   @impl true
-  def init(snapshot) do
-    {:ok, {snapshot, _wal = :queue.new(), _wal_size = 0, _seq = 0}}
+  def init(_) do
+    case recover_from_storage() do
+      {:ok, snapshot, seq} ->
+        Logger.info(
+          "SnapshotServer recovered #{map_size(snapshot.sessions)} sessions, seq=#{seq}"
+        )
+
+        {:ok, {snapshot, _wal = :queue.new(), _wal_size = 0, seq}}
+
+      {:error, reason} ->
+        Logger.warning("SnapshotServer recovery failed: #{inspect(reason)}, starting fresh")
+        {:ok, {%Snapshot{}, _wal = :queue.new(), _wal_size = 0, _seq = 0}}
+    end
   end
 
   @impl true
@@ -82,10 +97,9 @@ defmodule Harness.SnapshotServer do
   @impl true
   def handle_call({:replay_since, after_seq}, _from, {_snapshot, wal, wal_size, seq} = state) do
     if wal_size == 0 or after_seq >= seq do
-      # Nothing to replay
-      {:reply, {:ok, seq, []}, state}
+      # Nothing to replay from WAL — try SQL
+      replay_from_sql_or_empty(after_seq, seq, state)
     else
-      # Check if the requested seq is still in the buffer
       wal_list = :queue.to_list(wal)
 
       oldest_seq =
@@ -94,17 +108,17 @@ defmodule Harness.SnapshotServer do
           _ -> seq
         end
 
-      if after_seq < oldest_seq - 1 do
-        # Gap — requested events have been evicted
-        {:reply, {:gap, seq, oldest_seq}, state}
-      else
-        # Replay events with seq > after_seq
+      if after_seq >= oldest_seq - 1 do
+        # Serve from hot cache (WAL ring buffer)
         missed =
           wal_list
           |> Enum.filter(fn {s, _} -> s > after_seq end)
           |> Enum.map(fn {s, event_map} -> Map.put(event_map, :seq, s) end)
 
         {:reply, {:ok, seq, missed}, state}
+      else
+        # WAL too small — fall back to SQL
+        replay_from_sql_or_empty(after_seq, seq, state)
       end
     end
   end
@@ -116,7 +130,10 @@ defmodule Harness.SnapshotServer do
 
     event_map = event_to_map(event) |> Map.put(:seq, new_seq)
 
-    # Append to WAL ring buffer
+    # Persist to SQLite (best-effort — broadcast even if SQL fails)
+    persist(event, new_snapshot, new_seq)
+
+    # Append to WAL ring buffer (hot cache for fast replay)
     {new_wal, new_wal_size} = wal_append(wal, wal_size, {new_seq, event_map})
 
     # Broadcast raw event with sequence number
@@ -146,6 +163,101 @@ defmodule Harness.SnapshotServer do
     end
 
     {:noreply, {new_snapshot, new_wal, new_wal_size, new_seq}}
+  end
+
+  # --- Recovery ---
+
+  defp recover_from_storage do
+    sessions = Harness.Storage.get_all_sessions()
+    seq = Harness.Storage.get_max_sequence()
+
+    sessions_map = Map.new(sessions, fn session -> {session.thread_id, session} end)
+
+    # Set sequence from SQL, NOT from Projector (avoids double-count)
+    snapshot = %Snapshot{
+      sequence: seq,
+      updated_at: latest_updated_at(sessions),
+      sessions: sessions_map
+    }
+
+    {:ok, snapshot, seq}
+  rescue
+    e -> {:error, e}
+  catch
+    :exit, reason -> {:error, reason}
+  end
+
+  defp latest_updated_at([]), do: nil
+
+  defp latest_updated_at(sessions) do
+    sessions
+    |> Enum.map(& &1.updated_at)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.max(fn -> nil end)
+  end
+
+  # --- Persistence ---
+
+  defp persist(event, new_snapshot, new_seq) do
+    try do
+      case Harness.Storage.insert_event(%{
+             event_id: event.event_id,
+             thread_id: event.thread_id,
+             provider: event.provider,
+             kind: event.kind,
+             method: event.method,
+             payload: event.payload,
+             created_at: event.created_at
+           }) do
+        {:ok, _seq} ->
+          # Upsert session if it exists in the snapshot
+          case Map.get(new_snapshot.sessions, event.thread_id) do
+            nil ->
+              :ok
+
+            session ->
+              Harness.Storage.upsert_session(%{
+                thread_id: session.thread_id,
+                provider: session.provider,
+                status: session.status,
+                model: session.model,
+                cwd: session.cwd,
+                runtime_mode: session.runtime_mode,
+                active_turn: session.active_turn,
+                pending_requests: session.pending_requests,
+                created_at: session.created_at,
+                updated_at: session.updated_at,
+                last_sequence: new_seq
+              })
+          end
+
+        {:error, :duplicate_event} ->
+          :ok
+
+        {:error, reason} ->
+          Logger.error("Storage insert_event failed: #{inspect(reason)}")
+      end
+    catch
+      :exit, reason ->
+        Logger.error("Storage unavailable: #{inspect(reason)}")
+    end
+  end
+
+  # --- SQL replay fallback ---
+
+  defp replay_from_sql_or_empty(after_seq, seq, state) do
+    try do
+      case Harness.Storage.replay_since(after_seq) do
+        {:ok, events} ->
+          {:reply, {:ok, seq, events}, state}
+
+        {:error, _reason} ->
+          {:reply, {:ok, seq, []}, state}
+      end
+    catch
+      :exit, _ ->
+        {:reply, {:ok, seq, []}, state}
+    end
   end
 
   # --- WAL Ring Buffer ---

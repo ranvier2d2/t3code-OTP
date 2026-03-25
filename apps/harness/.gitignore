@@ -29,3 +29,4 @@ harness-*.tar
 # E2E test artifacts
 apps/web/e2e-results/
 test-results/
+priv/data/*.db*

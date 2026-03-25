@@ -29,6 +29,7 @@ defmodule Harness.MixProject do
       {:jason, "~> 1.4"},
       {:bandit, "~> 1.5"},
       {:req, "~> 0.5"},
+      {:exqlite, "~> 0.27"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end

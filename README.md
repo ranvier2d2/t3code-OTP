@@ -28,16 +28,16 @@ Once you manage several concurrent agent sessions — each with its own protocol
 
 The engine owns supervision, crash isolation, and per-session memory containment. Node keeps everything else: Agent SDK access, TypeScript contracts, SQLite persistence, desktop integration, and the entire existing orchestration layer.
 
-| Concern | Owner |
-|---|---|
-| Provider process lifecycle | Elixir |
-| Crash isolation + supervision | Elixir |
-| Per-session memory containment | Elixir |
-| Event normalization | Elixir |
-| Canonical event mapping (TS types) | Node |
-| SQLite persistence | Node |
-| Browser/Electron WebSocket | Node |
-| Desktop + product integration | Node |
+| Concern                            | Owner  |
+| ---------------------------------- | ------ |
+| Provider process lifecycle         | Elixir |
+| Crash isolation + supervision      | Elixir |
+| Per-session memory containment     | Elixir |
+| Event normalization                | Elixir |
+| Canonical event mapping (TS types) | Node   |
+| SQLite persistence                 | Node   |
+| Browser/Electron WebSocket         | Node   |
+| Desktop + product integration      | Node   |
 
 ---
 
@@ -78,12 +78,12 @@ pixi run credo                       # Elixir linter
 
 All 4 providers verified E2E in browser with real prompts and real tool execution:
 
-| Provider | Transport | Tool Use | Models |
-|---|---|---|---|
-| Codex | stdio JSON-RPC via Erlang Port | `commandExecution` — file created | — |
-| Claude | stdio stream-json via `/bin/sh` | file write via `bypassPermissions` | — |
-| Cursor | stdio stream-json via Erlang Port | file write via `--yolo` | 80+ discovered |
-| OpenCode | HTTP + SSE via raw TCP + Req | `file_change write` via permission reply | 18 discovered |
+| Provider | Transport                         | Tool Use                                 | Models         |
+| -------- | --------------------------------- | ---------------------------------------- | -------------- |
+| Codex    | stdio JSON-RPC via Erlang Port    | `commandExecution` — file created        | —              |
+| Claude   | stdio stream-json via `/bin/sh`   | file write via `bypassPermissions`       | —              |
+| Cursor   | stdio stream-json via Erlang Port | file write via `--yolo`                  | 80+ discovered |
+| OpenCode | HTTP + SSE via raw TCP + Req      | `file_change write` via permission reply | 18 discovered  |
 
 Full feature matrix including session lifecycle, approval requests, streaming tool output, and thread persistence: see the [companion writeup](https://ranvier-technologies.github.io/t3code-OTP/).
 
@@ -95,15 +95,15 @@ Full feature matrix including session lifecycle, approval requests, streaming to
 
 ### The headline numbers
 
-| Metric | Node | Elixir |
-|---|---|---|
-| Memory with 1 leaky session | Shared heap → 2,800% of baseline (158 MB) | BEAM total → 102% of baseline |
-| Event loop lag during leak | p99 = 169ms | N/A (no shared event loop) |
-| Sibling sessions affected | All degraded | Zero |
-| Latency at 200 concurrent sessions | 3,314ms p99 | 607ms p99 |
-| Throughput at 200 sessions | 5,779 ev/s (event loop saturated) | 18,000 ev/s |
-| Per-session memory (5→200 sessions) | Unmeasurable (shared heap) | Constant ~268KB |
-| Crash lag spike (up to 20 simultaneous) | 1.4–2.7ms | 0.0ms at every count |
+| Metric                                  | Node                                      | Elixir                        |
+| --------------------------------------- | ----------------------------------------- | ----------------------------- |
+| Memory with 1 leaky session             | Shared heap → 2,800% of baseline (158 MB) | BEAM total → 102% of baseline |
+| Event loop lag during leak              | p99 = 169ms                               | N/A (no shared event loop)    |
+| Sibling sessions affected               | All degraded                              | Zero                          |
+| Latency at 200 concurrent sessions      | 3,314ms p99                               | 607ms p99                     |
+| Throughput at 200 sessions              | 5,779 ev/s (event loop saturated)         | 18,000 ev/s                   |
+| Per-session memory (5→200 sessions)     | Unmeasurable (shared heap)                | Constant ~268KB               |
+| Crash lag spike (up to 20 simultaneous) | 1.4–2.7ms                                 | 0.0ms at every count          |
 
 ### Real workload
 
@@ -139,25 +139,25 @@ python3 output/stress-test/viz-real.py
 
 ### Elixir harness (`apps/harness/`)
 
-| Module | LOC | Role |
-|---|---|---|
-| `SessionManager` | 224 | DynamicSupervisor routing, session lifecycle |
-| `CodexSession` | 380 | Codex JSON-RPC GenServer |
-| `ClaudeSession` | 530 | Claude CLI stream-json GenServer |
-| `CursorSession` | 712 | Cursor stream-json + tool mapping |
-| `OpenCodeSession` | 1,050 | OpenCode HTTP+SSE + tool mapping |
-| `MockSession` | 220 | Configurable mock for stress testing |
-| `SnapshotServer` | 380 | In-memory event store + WAL replay |
-| `ModelDiscovery` | 149 | CLI-based model listing with ETS cache |
-| `HarnessChannel` | 246 | Phoenix Channel — single WS entry point |
+| Module            | LOC   | Role                                         |
+| ----------------- | ----- | -------------------------------------------- |
+| `SessionManager`  | 224   | DynamicSupervisor routing, session lifecycle |
+| `CodexSession`    | 380   | Codex JSON-RPC GenServer                     |
+| `ClaudeSession`   | 530   | Claude CLI stream-json GenServer             |
+| `CursorSession`   | 712   | Cursor stream-json + tool mapping            |
+| `OpenCodeSession` | 1,050 | OpenCode HTTP+SSE + tool mapping             |
+| `MockSession`     | 220   | Configurable mock for stress testing         |
+| `SnapshotServer`  | 380   | In-memory event store + WAL replay           |
+| `ModelDiscovery`  | 149   | CLI-based model listing with ETS cache       |
+| `HarnessChannel`  | 246   | Phoenix Channel — single WS entry point      |
 
 ### Node integration
 
-| File | LOC | Role |
-|---|---|---|
-| `HarnessClientAdapter.ts` | 1,083 | Single adapter: all 13 `ProviderAdapterShape` methods |
-| `HarnessClientManager.ts` | 586 | Phoenix Channel WS client with reconnection |
-| `codexEventMapping.ts` | 1,244 | Extracted event mapping (shared with existing CodexAdapter) |
+| File                      | LOC   | Role                                                        |
+| ------------------------- | ----- | ----------------------------------------------------------- |
+| `HarnessClientAdapter.ts` | 1,083 | Single adapter: all 13 `ProviderAdapterShape` methods       |
+| `HarnessClientManager.ts` | 586   | Phoenix Channel WS client with reconnection                 |
+| `codexEventMapping.ts`    | 1,244 | Extracted event mapping (shared with existing CodexAdapter) |
 
 ---
 

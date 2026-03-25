@@ -12,6 +12,7 @@ defmodule Harness.Application do
       {Phoenix.PubSub, name: Harness.PubSub},
       {Registry, keys: :unique, name: Harness.SessionRegistry},
       {DynamicSupervisor, name: Harness.SessionSupervisor, strategy: :one_for_one},
+      Harness.Storage,
       Harness.SnapshotServer,
       HarnessWeb.Endpoint
     ]
