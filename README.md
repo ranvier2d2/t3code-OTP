@@ -7,18 +7,19 @@ An OTP supervision layer for multi-provider AI coding agents. Four providers, re
 Built as a fork of [T3Code](https://github.com/pingdotgg/t3code). For the full architectural case: **[Why T3Code Might Want Two Runtimes](https://ranvier-technologies.github.io/t3code-OTP/)**.
 
 ```
-Browser ──── Node Server ──────────── T3Otp-Engine (Elixir)
-               │                           │
-               │◄── Phoenix Channel WS ──►│
-               │    (single connection)    │
-               │                           ├── CodexSession    (stdio JSON-RPC)
-               │                           ├── ClaudeSession   (stdio stream-json)
-               │                           ├── CursorSession   (stdio stream-json)
-               │                           └── OpenCodeSession (HTTP + SSE)
-               │                           │
-               │    normalized events      │
-               │◄──────────────────────────│
+Browser ──── Node Server ──────────────── T3Otp-Engine (Elixir)
+               │                                │
+               │◄── Phoenix Channel WS ───────►│
+               │    (single connection)         │
+               │                                ├── CodexSession    (stdio JSON-RPC)
+               ├── ClaudeAdapter (Agent SDK)    ├── CursorSession   (stdio stream-json)
+               │                                └── OpenCodeSession (HTTP + SSE)
+               │                                │
+               │    normalized events           │
+               │◄───────────────────────────────│
 ```
+
+**Note:** Claude uses the Anthropic Agent SDK directly in Node (same as upstream T3Code). The remaining three providers — Codex, Cursor, OpenCode — are managed by the Elixir harness.
 
 ---
 
@@ -26,18 +27,19 @@ Browser ──── Node Server ──────────── T3Otp-Engi
 
 Once you manage several concurrent agent sessions — each with its own protocol, failure modes, and lifecycle — the job stops looking like "serve some HTTP" and starts looking like "supervise a tree of unstable runtimes." OTP was designed for exactly this class of problem.
 
-The engine owns supervision, crash isolation, and per-session memory containment. Node keeps everything else: Agent SDK access, TypeScript contracts, SQLite persistence, desktop integration, and the entire existing orchestration layer.
+The engine owns supervision, crash isolation, and per-session memory containment. Node keeps SDK access, TypeScript contracts, desktop integration, and the orchestration layer. Both runtimes share SQLite for durability.
 
-| Concern                            | Owner  |
-| ---------------------------------- | ------ |
-| Provider process lifecycle         | Elixir |
-| Crash isolation + supervision      | Elixir |
-| Per-session memory containment     | Elixir |
-| Event normalization                | Elixir |
-| Canonical event mapping (TS types) | Node   |
-| SQLite persistence                 | Node   |
-| Browser/Electron WebSocket         | Node   |
-| Desktop + product integration      | Node   |
+| Concern                            | Owner       |
+| ---------------------------------- | ----------- |
+| Provider process lifecycle         | Elixir      |
+| Crash isolation + supervision      | Elixir      |
+| Per-session memory containment     | Elixir      |
+| Session + event durability         | Both (SQLite) |
+| Pending request crash recovery     | Elixir      |
+| Canonical event mapping (TS types) | Node        |
+| Claude Agent SDK                   | Node        |
+| Browser/Electron WebSocket         | Node        |
+| Desktop + product integration      | Node        |
 
 ---
 
@@ -48,7 +50,6 @@ The engine owns supervision, crash isolation, and per-session memory containment
 ```bash
 git clone https://github.com/Ranvier-Technologies/t3code-OTP.git t3otp-engine
 cd t3otp-engine
-git checkout worktree-orktree
 
 pixi run setup    # Install all dependencies (Node + Hex)
 pixi run dev      # Starts Elixir harness + Node server + Vite
@@ -78,12 +79,12 @@ pixi run credo                       # Elixir linter
 
 All 4 providers verified E2E in browser with real prompts and real tool execution:
 
-| Provider | Transport                         | Tool Use                                 | Models         |
-| -------- | --------------------------------- | ---------------------------------------- | -------------- |
-| Codex    | stdio JSON-RPC via Erlang Port    | `commandExecution` — file created        | —              |
-| Claude   | stdio stream-json via `/bin/sh`   | file write via `bypassPermissions`       | —              |
-| Cursor   | stdio stream-json via Erlang Port | file write via `--yolo`                  | 80+ discovered |
-| OpenCode | HTTP + SSE via raw TCP + Req      | `file_change write` via permission reply | 18 discovered  |
+| Provider | Runtime | Transport                         | Tool Use                                 |
+| -------- | ------- | --------------------------------- | ---------------------------------------- |
+| Claude   | Node    | Agent SDK (direct)                | file write via `bypassPermissions`       |
+| Codex    | Elixir  | stdio JSON-RPC via Erlang Port    | `commandExecution` — file created        |
+| Cursor   | Elixir  | stdio stream-json via Erlang Port | file write via `--yolo`                  |
+| OpenCode | Elixir  | HTTP + SSE via raw TCP + Req      | `file_change write` via permission reply |
 
 Full feature matrix including session lifecycle, approval requests, streaming tool output, and thread persistence: see the [companion writeup](https://ranvier-technologies.github.io/t3code-OTP/).
 
@@ -139,35 +140,38 @@ python3 output/stress-test/viz-real.py
 
 ### Elixir harness (`apps/harness/`)
 
-| Module            | LOC   | Role                                         |
-| ----------------- | ----- | -------------------------------------------- |
-| `SessionManager`  | 224   | DynamicSupervisor routing, session lifecycle |
-| `CodexSession`    | 380   | Codex JSON-RPC GenServer                     |
-| `ClaudeSession`   | 530   | Claude CLI stream-json GenServer             |
-| `CursorSession`   | 712   | Cursor stream-json + tool mapping            |
-| `OpenCodeSession` | 1,050 | OpenCode HTTP+SSE + tool mapping             |
-| `MockSession`     | 220   | Configurable mock for stress testing         |
-| `SnapshotServer`  | 380   | In-memory event store + WAL replay           |
-| `ModelDiscovery`  | 149   | CLI-based model listing with ETS cache       |
-| `HarnessChannel`  | 246   | Phoenix Channel — single WS entry point      |
+| Module             | Role                                              |
+| ------------------ | ------------------------------------------------- |
+| `SessionManager`   | DynamicSupervisor routing, session lifecycle       |
+| `CodexSession`     | Codex JSON-RPC GenServer                           |
+| `CursorSession`    | Cursor stream-json + tool mapping                  |
+| `OpenCodeSession`  | OpenCode HTTP+SSE + tool mapping                   |
+| `ClaudeSession`    | Claude CLI GenServer (stress tests only)           |
+| `MockSession`      | Configurable mock for stress testing               |
+| `SnapshotServer`   | In-memory event store + WAL replay + recovery      |
+| `Storage`          | SQLite durability (sessions, events, pending reqs) |
+| `Projector`        | Pure event → snapshot projection                   |
+| `ModelDiscovery`   | CLI-based model listing with ETS cache             |
+| `HarnessChannel`   | Phoenix Channel — single WS entry point            |
 
 ### Node integration
 
-| File                      | LOC   | Role                                                        |
-| ------------------------- | ----- | ----------------------------------------------------------- |
-| `HarnessClientAdapter.ts` | 1,083 | Single adapter: all 13 `ProviderAdapterShape` methods       |
-| `HarnessClientManager.ts` | 586   | Phoenix Channel WS client with reconnection                 |
-| `codexEventMapping.ts`    | 1,244 | Extracted event mapping (shared with existing CodexAdapter) |
+| File                      | Role                                                        |
+| ------------------------- | ----------------------------------------------------------- |
+| `HarnessClientAdapter.ts` | Single adapter: all 13 `ProviderAdapterShape` methods       |
+| `HarnessClientManager.ts` | Phoenix Channel WS client with reconnection                 |
+| `codexEventMapping.ts`    | Canonical event mapping (shared with existing CodexAdapter)  |
+| `ClaudeAdapter.ts`        | Claude Agent SDK adapter (Node-native, not via harness)      |
 
 ---
 
 ## Adding a new provider
 
-1. Create `apps/harness/lib/harness/providers/new_session.ex` (~500–700 LOC)
+1. Create `apps/harness/lib/harness/providers/new_session.ex`
 2. Add clause to `SessionManager.provider_module/1`
 3. Add provider kind to `packages/contracts/src/orchestration.ts`
 
-No new TypeScript adapter. For comparison, the current per-adapter pattern requires ~3,000 LOC of new TypeScript per provider.
+No new TypeScript adapter needed — `HarnessClientAdapter` handles all harness-routed providers generically.
 
 ---
 
