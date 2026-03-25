@@ -1362,6 +1362,22 @@ export function mapToRuntimeEvents(
     ];
   }
 
+  if (event.method === "codex/event/plan_delta") {
+    const msg = codexEventMessage(payload);
+    const delta =
+      asString(msg?.delta) ?? asString(msg?.text) ?? asString(asObject(msg?.content)?.text);
+    if (!delta || delta.length === 0) {
+      return [];
+    }
+    return [
+      {
+        ...codexEventBase(event, canonicalThreadId),
+        type: "turn.proposed.delta" as const,
+        payload: { delta },
+      },
+    ];
+  }
+
   // Log unmapped events to aid debugging — skip known-noisy non-critical ones.
   if (event.method && !QUIET_UNMAPPED_EVENTS.has(event.method)) {
     console.debug(`[codexEventMapping] unmapped event: ${event.method}`, event.payload ?? "");
