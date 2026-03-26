@@ -706,7 +706,11 @@ const make = Effect.gen(function* () {
 
     const now = event.payload.createdAt;
     if (thread.session && thread.session.status !== "stopped") {
-      yield* providerService.stopSession({ threadId: thread.id });
+      // Run stop as uninterruptible to prevent Claude SDK fiber interruptions
+      // from propagating up and killing the reactor worker.
+      yield* providerService
+        .stopSession({ threadId: thread.id })
+        .pipe(Effect.uninterruptible, Effect.ignore);
     }
 
     yield* setThreadSession({
