@@ -823,33 +823,52 @@ defmodule Harness.Providers.CodexSession do
 
   defp handle_rpc_request(state, id, method, params) do
     request_id = Map.get(params, "requestId", "rpc-#{id}")
+    runtime_mode = Map.get(state.params, "runtimeMode", "full-access")
 
     is_user_input =
       method in ["ask_user", "user_input", "elicitation"] or
         (is_binary(method) and String.contains?(String.downcase(method), "ask_user"))
 
-    if is_user_input do
-      questions = Map.get(params, "questions", [Map.get(params, "question", %{})])
+    # Auto-approve approval requests in full-access mode (Codex CLI sometimes
+    # sends exec_approval_request even with approvalPolicy: "never", e.g. on
+    # resumed sessions or model changes).
+    is_approval = not is_user_input and runtime_mode == "full-access"
 
-      emit_event(state, :request, "user-input/requested", %{
+    if is_approval do
+      Logger.info("Auto-approving Codex request #{method} (full-access mode)")
+      response = JsonRpc.encode_response(id, %{"decision" => "approved"})
+      send_to_port(state, response)
+
+      emit_event(state, :notification, "request/resolved", %{
         "requestId" => request_id,
-        "rpcId" => id,
-        "questions" => questions
+        "decision" => "approved"
       })
+
+      state
     else
-      emit_event(state, :request, method, Map.put(params, "rpcId", id))
+      if is_user_input do
+        questions = Map.get(params, "questions", [Map.get(params, "question", %{})])
+
+        emit_event(state, :request, "user-input/requested", %{
+          "requestId" => request_id,
+          "rpcId" => id,
+          "questions" => questions
+        })
+      else
+        emit_event(state, :request, method, Map.put(params, "rpcId", id))
+      end
+
+      pending =
+        Map.put(state.pending, id, %{
+          kind: :provider_request,
+          method: method,
+          params: Map.put(params, "requestId", request_id),
+          from: nil,
+          timer: nil
+        })
+
+      %{state | pending: pending}
     end
-
-    pending =
-      Map.put(state.pending, id, %{
-        kind: :provider_request,
-        method: method,
-        params: Map.put(params, "requestId", request_id),
-        from: nil,
-        timer: nil
-      })
-
-    %{state | pending: pending}
   end
 
   defp handle_rpc_notification(state, method, params) do
