@@ -835,13 +835,14 @@ defmodule Harness.Providers.CodexSession do
     is_approval = not is_user_input and runtime_mode == "full-access"
 
     if is_approval do
+      # Codex CLI expects {"decision":"approve"} (not "approved") for exec_approval_request
       Logger.info("Auto-approving Codex request #{method} (full-access mode)")
-      response = JsonRpc.encode_response(id, %{"decision" => "approved"})
+      response = JsonRpc.encode_response(id, %{"decision" => "approve"})
       send_to_port(state, response)
 
       emit_event(state, :notification, "request/resolved", %{
         "requestId" => request_id,
-        "decision" => "approved"
+        "decision" => "approve"
       })
 
       state
