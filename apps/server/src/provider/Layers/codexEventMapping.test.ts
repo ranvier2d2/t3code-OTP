@@ -4,13 +4,7 @@
  */
 import { describe, it, expect } from "bun:test";
 import { mapToRuntimeEvents } from "./codexEventMapping.ts";
-import {
-  EventId,
-  type ProviderEvent,
-  ProviderItemId,
-  ThreadId,
-  TurnId,
-} from "@t3tools/contracts";
+import { EventId, type ProviderEvent, ProviderItemId, ThreadId, TurnId } from "@t3tools/contracts";
 
 const threadId = ThreadId.makeUnsafe("thread-1");
 
