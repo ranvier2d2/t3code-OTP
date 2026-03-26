@@ -574,6 +574,7 @@ async function testH3(client: T3Client, projectId: string): Promise<HypothesisRe
   const now = new Date().toISOString();
 
   let sessionSetCount = 0;
+  let sessionStartCount = 0; // session-set events with status "starting" — indicates a new provider spawn
   let turnStartCount = 0;
   let turnCompleteCount = 0;
   let errorEvents: string[] = [];
@@ -588,7 +589,12 @@ async function testH3(client: T3Client, projectId: string): Promise<HypothesisRe
     const eventType = data.type as string;
     if (eventType === "thread.session-set") {
       sessionSetCount++;
-      result.evidence.push(`session-set event #${sessionSetCount} at t=${ts()}`);
+      const sessionStatus = (data.payload as Record<string, unknown>)?.session;
+      const status = (sessionStatus as Record<string, unknown>)?.status;
+      if (status === "starting") {
+        sessionStartCount++;
+        result.evidence.push(`session START #${sessionStartCount} at t=${ts()}`);
+      }
     }
     if (eventType === "thread.turn-start-requested") turnStartCount++;
     if (eventType === "thread.turn-diff-completed") turnCompleteCount++;
@@ -684,23 +690,23 @@ async function testH3(client: T3Client, projectId: string): Promise<HypothesisRe
 
   // Analyze
   log(`\nH3 Results:`);
-  log(`  session-set events: ${sessionSetCount}`);
+  log(`  session-set events: ${sessionSetCount} (${sessionStartCount} with status "starting")`);
   log(`  turn-start-requested events: ${turnStartCount}`);
   log(`  turn-diff-completed events: ${turnCompleteCount}`);
   log(`  error events: ${errorEvents.length}`);
 
-  if (sessionSetCount > 1) {
+  if (sessionStartCount > 1) {
+    // Multiple provider spawns — actual double session start bug
     result.status = "CONFIRMED";
-    result.details = `Multiple session-set events (${sessionSetCount}) detected for same thread. Double session start confirmed.`;
+    result.details = `Multiple provider spawns detected (${sessionStartCount} session-set events with status "starting"). Double session start confirmed.`;
   } else if (errorEvents.length > 0) {
     result.status = "CONFIRMED";
     result.details = `Error events detected during concurrent turns: ${errorEvents.join("; ").slice(0, 300)}`;
     result.evidence.push(...errorEvents);
-  } else if (turnStartCount > 1 && sessionSetCount === 1) {
+  } else if (turnStartCount > 1 && sessionStartCount <= 1) {
     result.status = "REJECTED";
-    result.details = `Both turns dispatched (${turnStartCount} turn-start events) but only 1 session created. hasHandledTurnStartRecently dedup or GenServer serialization prevented double start.`;
+    result.details = `Both turns dispatched (${turnStartCount} turn-start events) but only ${sessionStartCount} provider spawn. ${sessionSetCount} total session-set events are normal status transitions (starting→ready→running).`;
   } else if (turnStartCount <= 1) {
-    // The dedup cache caught the second turn
     result.status = "REJECTED";
     result.details = `Only ${turnStartCount} turn-start event(s) reached the reactor. Dedup cache prevented second dispatch.`;
   } else {
