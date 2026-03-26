@@ -2176,7 +2176,9 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
         const streamFiber = context.streamFiber;
         context.streamFiber = undefined;
         if (streamFiber && streamFiber.pollUnsafe() === undefined) {
-          yield* Fiber.interrupt(streamFiber);
+          // Fork the interrupt as a child fiber so we don't join the dying
+          // fiber (which would propagate the interruption up and crash the server).
+          yield* Fiber.interrupt(streamFiber).pipe(Effect.forkChild);
         }
 
         // @effect-diagnostics-next-line tryCatchInEffectGen:off

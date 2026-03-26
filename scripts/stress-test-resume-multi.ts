@@ -13,8 +13,12 @@
  *          "scale" [N] (N per provider, 4N total — default N=3 → 12 sessions)
  *          [N] [provider] (N sessions, 1 provider)
  *
+ * Options:
+ *   --exclude <provider>  Exclude a provider (repeatable)
+ *
  * Examples:
  *   bun run scripts/stress-test-resume-multi.ts multi          # 4 sessions (1 per provider)
+ *   bun run scripts/stress-test-resume-multi.ts multi --exclude claudeAgent
  *   bun run scripts/stress-test-resume-multi.ts scale 3        # 12 sessions (3 per provider)
  *   bun run scripts/stress-test-resume-multi.ts 3 codex        # 3 codex sessions
  *
@@ -47,8 +51,18 @@ interface SessionSpec {
   label: string;
 }
 
-// All 4 providers including Claude (Node SDK)
-const ALL_PROVIDERS = ["codex", "claudeAgent", "cursor", "opencode"];
+// Parse --exclude flags
+const excludeSet = new Set<string>();
+for (let i = 2; i < process.argv.length; i++) {
+  if (process.argv[i] === "--exclude" && process.argv[i + 1]) {
+    excludeSet.add(process.argv[++i]);
+  }
+}
+
+// All 4 providers including Claude (Node SDK), minus excluded
+const ALL_PROVIDERS = ["codex", "claudeAgent", "cursor", "opencode"].filter(
+  (p) => !excludeSet.has(p),
+);
 
 let sessions: SessionSpec[];
 if (MODE === "scale") {
