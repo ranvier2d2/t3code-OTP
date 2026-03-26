@@ -1013,11 +1013,14 @@ export default function ChatView({ threadId }: ChatViewProps) {
       codex: providerStatuses.find((provider) => provider.provider === "codex")?.models ?? [],
       claudeAgent:
         providerStatuses.find((provider) => provider.provider === "claudeAgent")?.models ?? [],
+      cursor: providerStatuses.find((provider) => provider.provider === "cursor")?.models ?? [],
+      opencode:
+        providerStatuses.find((provider) => provider.provider === "opencode")?.models ?? [],
     }),
     [providerStatuses],
   );
   const selectedModelForPickerWithCustomFallback = useMemo(() => {
-    const currentOptions = modelOptionsByProvider[selectedProvider];
+    const currentOptions = modelOptionsByProvider[selectedProvider] ?? [];
     return currentOptions.some((option) => option.slug === selectedModelForPicker)
       ? selectedModelForPicker
       : (normalizeModelSlug(selectedModelForPicker, selectedProvider) ?? selectedModelForPicker);
