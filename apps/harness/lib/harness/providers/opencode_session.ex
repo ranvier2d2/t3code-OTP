@@ -1214,11 +1214,11 @@ defmodule Harness.Providers.OpenCodeSession do
   defp turn_id_from_state(_), do: nil
 
   defp persist_binding(state) do
+    # Only persist durable identifiers — port is ephemeral and stale after restart
     cursor_json =
       Jason.encode!(%{
         "threadId" => state.thread_id,
-        "sessionId" => state.opencode_session_id,
-        "port" => state.opencode_port
+        "sessionId" => state.opencode_session_id
       })
 
     Harness.Storage.upsert_binding(state.thread_id, state.provider, cursor_json)

@@ -151,15 +151,14 @@ class T3Client {
         const id = msg.id as string | undefined;
         if (!id) return;
 
-        // Schema validation errors return id="unknown" — reject the most recent pending request
+        // Schema validation errors return id="unknown" — reject all pending
+        // since we can't correlate which request caused the error
         if (id === "unknown" && msg.error) {
           const errMsg = (msg.error as { message?: string }).message ?? JSON.stringify(msg.error);
-          // Reject all pending (schema error means request was malformed)
-          for (const [pid, p] of this.pending) {
-            this.pending.delete(pid);
+          for (const [, p] of this.pending) {
             p.reject(new Error(`Schema error: ${errMsg}`));
-            break; // Only reject the oldest one
           }
+          this.pending.clear();
           return;
         }
 
@@ -426,8 +425,13 @@ async function main() {
   });
   await Promise.all(stopPromises);
 
-  // Wait for sessions to fully stop
-  await sleep(5000);
+  // Wait for all sessions to confirm stopped (or timeout)
+  const stopDeadline = Date.now() + 30_000;
+  while (Date.now() < stopDeadline) {
+    const allStopped = [...phase1Trackers.values()].every((t) => t.sessionStopped);
+    if (allStopped) break;
+    await sleep(500);
+  }
 
   // Set up phase 2 trackers early so we catch events during restart
   for (const s of sessions) {
