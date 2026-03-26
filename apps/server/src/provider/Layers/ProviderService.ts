@@ -21,7 +21,7 @@ import {
   type ProviderRuntimeEvent,
   type ProviderSession,
 } from "@t3tools/contracts";
-import { Effect, Layer, Option, PubSub, Queue, Schema, SchemaIssue, Stream } from "effect";
+import { Cause, Effect, Layer, Option, PubSub, Queue, Schema, SchemaIssue, Stream } from "effect";
 
 import { ProviderValidationError } from "../Errors.ts";
 import { ProviderAdapterRegistry } from "../Services/ProviderAdapterRegistry.ts";
@@ -202,7 +202,14 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
     yield* Effect.forEach(adapters, (adapter) =>
       Stream.runForEach(adapter.streamEvents, (event) =>
         Queue.offer(runtimeEventQueue, event).pipe(Effect.asVoid),
-      ).pipe(Effect.forkScoped),
+      ).pipe(
+        // Interrupts are expected when an adapter scope closes during stop —
+        // swallow them so they don't propagate and crash the process.
+        Effect.catchCause((cause) =>
+          Cause.hasInterruptsOnly(cause) ? Effect.void : Effect.failCause(cause),
+        ),
+        Effect.forkScoped,
+      ),
     ).pipe(Effect.asVoid);
 
     const recoverSessionForThread = (input: {

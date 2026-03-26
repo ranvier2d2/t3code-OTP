@@ -61,7 +61,11 @@ defmodule Harness.Providers.OpenCodeSession do
     stopped: false,
     ready: false,
     ready_waiters: [],
-    reasoning_active: false
+    reasoning_active: false,
+    # H4 timing instrumentation: track SSE connect vs first permission.asked
+    sse_connected_at: nil,
+    first_permission_asked_at: nil,
+    permission_timing_logged: false
   ]
 
   # --- Public API ---
@@ -136,8 +140,10 @@ defmodule Harness.Providers.OpenCodeSession do
     case wait_for_server(state.base_url, 45) do
       :ok ->
         # Connect to SSE event stream
+        sse_connected_at = System.monotonic_time(:millisecond)
         sse_pid = start_sse_listener(state)
-        state = %{state | sse_pid: sse_pid}
+        state = %{state | sse_pid: sse_pid, sse_connected_at: sse_connected_at}
+        Logger.info("[H4-TIMING] SSE connect initiated at mono=#{sse_connected_at}ms for thread #{state.thread_id}")
 
         # Create a session
         case create_opencode_session(state) do
@@ -240,8 +246,11 @@ defmodule Harness.Providers.OpenCodeSession do
 
   @impl true
   def handle_info(:reconnect_sse, %{stopped: false} = state) do
+    reconnect_at = System.monotonic_time(:millisecond)
+    Logger.info("[H4-TIMING] SSE reconnect at mono=#{reconnect_at}ms for thread #{state.thread_id}")
     sse_pid = start_sse_listener(state)
-    {:noreply, %{state | sse_pid: sse_pid}}
+    # Reset timing state for the new SSE connection so we capture the gap on resume
+    {:noreply, %{state | sse_pid: sse_pid, sse_connected_at: reconnect_at, permission_timing_logged: false}}
   end
 
   @impl true
@@ -973,6 +982,33 @@ defmodule Harness.Providers.OpenCodeSession do
     permission = Map.get(data, "permission", "unknown")
     metadata = Map.get(data, "metadata", %{})
     runtime_mode = Map.get(state.params, "runtimeMode", "full-access")
+
+    # H4 timing instrumentation: log first permission.asked relative to SSE connect
+    state =
+      if state.permission_timing_logged do
+        state
+      else
+        now = System.monotonic_time(:millisecond)
+        state = %{state | first_permission_asked_at: now, permission_timing_logged: true}
+        gap = if state.sse_connected_at, do: now - state.sse_connected_at, else: nil
+
+        Logger.info(
+          "[H4-TIMING] First permission.asked at mono=#{now}ms, " <>
+            "SSE connected at mono=#{state.sse_connected_at}ms, " <>
+            "gap=#{inspect(gap)}ms, " <>
+            "permission=#{permission}, thread=#{state.thread_id}"
+        )
+
+        emit_event(state, :notification, "h4/permission-timing", %{
+          "sseConnectedAt" => state.sse_connected_at,
+          "firstPermissionAskedAt" => now,
+          "gapMs" => gap,
+          "permission" => permission,
+          "threadId" => state.thread_id
+        })
+
+        state
+      end
 
     if runtime_mode == "full-access" do
       # Auto-approve in full-access mode

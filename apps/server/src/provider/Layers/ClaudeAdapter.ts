@@ -197,6 +197,41 @@ function toError(cause: unknown, fallback: string): Error {
   return cause instanceof Error ? cause : new Error(toMessage(cause, fallback));
 }
 
+/**
+ * Wraps an AsyncIterable so that iteration short-circuits to `done` once
+ * `stopped()` returns true.  This prevents `Stream.fromAsyncIterable` from
+ * seeing the error/rejection that the Claude SDK iterator emits when
+ * `query.close()` is called, which would otherwise surface as an interrupt
+ * cause inside `causeSquash` and crash the process with
+ * "All fibers interrupted without error".
+ */
+function guardedAsyncIterable<T>(
+  iterable: AsyncIterable<T>,
+  stopped: () => boolean,
+): AsyncIterable<T> {
+  return {
+    [Symbol.asyncIterator]() {
+      const inner = iterable[Symbol.asyncIterator]();
+      return {
+        async next(): Promise<IteratorResult<T>> {
+          if (stopped()) return { done: true, value: undefined as never };
+          try {
+            const result = await inner.next();
+            if (stopped()) return { done: true, value: undefined as never };
+            return result;
+          } catch (error) {
+            if (stopped()) return { done: true, value: undefined as never };
+            throw error;
+          }
+        },
+        async return(): Promise<IteratorResult<T>> {
+          return inner.return?.() ?? { done: true, value: undefined as never };
+        },
+      };
+    },
+  };
+}
+
 function normalizeClaudeStreamMessages(cause: Cause.Cause<Error>): ReadonlyArray<string> {
   const errors = Cause.prettyErrors(cause)
     .map((error) => error.message.trim())
@@ -2096,8 +2131,9 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
       });
 
     const runSdkStream = (context: ClaudeSessionContext): Effect.Effect<void, Error> =>
-      Stream.fromAsyncIterable(context.query, (cause) =>
-        toError(cause, "Claude runtime stream failed."),
+      Stream.fromAsyncIterable(
+        guardedAsyncIterable(context.query, () => context.stopped),
+        (cause) => toError(cause, "Claude runtime stream failed."),
       ).pipe(
         Stream.takeWhile(() => !context.stopped),
         Stream.runForEach((message) => handleSdkMessage(context, message)),
@@ -2173,13 +2209,11 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
 
         yield* Queue.shutdown(context.promptQueue);
 
-        const streamFiber = context.streamFiber;
+        // Don't explicitly interrupt the stream fiber — the promptQueue shutdown
+        // above will cause it to end naturally. Explicit Fiber.interrupt triggers
+        // causeSquash in the effect-smol Stream runtime which throws a JS Error
+        // ("All fibers interrupted without error") that crashes the process.
         context.streamFiber = undefined;
-        if (streamFiber && streamFiber.pollUnsafe() === undefined) {
-          // Fork the interrupt as a child fiber so we don't join the dying
-          // fiber (which would propagate the interruption up and crash the server).
-          yield* Fiber.interrupt(streamFiber).pipe(Effect.forkChild);
-        }
 
         // @effect-diagnostics-next-line tryCatchInEffectGen:off
         try {
