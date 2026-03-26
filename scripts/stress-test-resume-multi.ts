@@ -304,8 +304,10 @@ async function main() {
     // Debug: log first few events to verify structure
     if (phase1Trackers.size > 0) {
       const known = phase1Trackers.has(threadId) || phase2Trackers.has(threadId);
-      if (!known && (data.aggregateKind === "thread")) {
-        log(`  [DEBUG] untracked thread event: type=${eventType} tid=${(threadId || "").slice(-12)} agg=${data.aggregateId}`);
+      if (!known && data.aggregateKind === "thread") {
+        log(
+          `  [DEBUG] untracked thread event: type=${eventType} tid=${(threadId || "").slice(-12)} agg=${data.aggregateId}`,
+        );
       }
     }
 
@@ -514,7 +516,9 @@ async function main() {
     if (p1ok && p2ok) {
       ok(`[${label}] Phase 1: turn ✓ | Phase 2: resume turn ✓`);
     } else {
-      fail(`[${label}] Phase 1: turn=${p1.turnCompleted} | Phase 2: resume turn=${p2.turnCompleted}`);
+      fail(
+        `[${label}] Phase 1: turn=${p1.turnCompleted} | Phase 2: resume turn=${p2.turnCompleted}`,
+      );
       allPassed = false;
     }
 

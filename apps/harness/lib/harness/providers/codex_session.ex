@@ -841,6 +841,9 @@ defmodule Harness.Providers.CodexSession do
       response = JsonRpc.encode_response(id, %{"decision" => "accept"})
       send_to_port(state, response)
 
+      # Intentional: auto-approved requests skip state.pending and have no
+      # corresponding "request.opened" event. The resolve notification lets
+      # the Node side log the decision without requiring a matching open.
       emit_event(state, :notification, "request/resolved", %{
         "requestId" => request_id,
         "decision" => "accept"

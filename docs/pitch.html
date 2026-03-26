@@ -1,755 +1,1712 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Why T3Code Might Want Two Runtimes</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Why T3Code Might Want Two Runtimes</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=DM+Sans:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
 
-:root{
-  --bg:#FAFAF8;--bg2:#F2F1ED;--bg3:#EAEAE6;
-  --fg:#1A1A18;--fg2:#5C5C58;--fg3:#8A8A84;
-  --accent:#534AB7;--accent-bg:#EEEDFE;--accent-fg:#3C3489;
-  --teal:#0F6E56;--teal-bg:#E1F5EE;--teal-fg:#085041;
-  --coral:#993C1D;--coral-bg:#FAECE7;
-  --red:#A32D2D;--red-bg:#FCEBEB;--red-fg:#791F1F;
-  --green:#3B6D11;--green-bg:#EAF3DE;--green-fg:#27500A;
-  --amber:#854F0B;--amber-bg:#FAEEDA;
-  --border:#E0DFD9;--border2:#C8C7C0;
-  --font-body:'DM Sans',system-ui,sans-serif;
-  --font-serif:'Source Serif 4',Georgia,serif;
-  --font-mono:'IBM Plex Mono',monospace;
-  --max-w:680px;
-}
+      :root {
+        --bg: #fafaf8;
+        --bg2: #f2f1ed;
+        --bg3: #eaeae6;
+        --fg: #1a1a18;
+        --fg2: #5c5c58;
+        --fg3: #8a8a84;
+        --accent: #534ab7;
+        --accent-bg: #eeedfe;
+        --accent-fg: #3c3489;
+        --teal: #0f6e56;
+        --teal-bg: #e1f5ee;
+        --teal-fg: #085041;
+        --coral: #993c1d;
+        --coral-bg: #faece7;
+        --red: #a32d2d;
+        --red-bg: #fcebeb;
+        --red-fg: #791f1f;
+        --green: #3b6d11;
+        --green-bg: #eaf3de;
+        --green-fg: #27500a;
+        --amber: #854f0b;
+        --amber-bg: #faeeda;
+        --border: #e0dfd9;
+        --border2: #c8c7c0;
+        --font-body: "DM Sans", system-ui, sans-serif;
+        --font-serif: "Source Serif 4", Georgia, serif;
+        --font-mono: "IBM Plex Mono", monospace;
+        --max-w: 680px;
+      }
 
-@media(prefers-color-scheme:dark){
-  :root{
-    --bg:#18181A;--bg2:#222224;--bg3:#2C2C2E;
-    --fg:#E8E8E4;--fg2:#A0A09A;--fg3:#6A6A64;
-    --accent:#AFA9EC;--accent-bg:#26215C;--accent-fg:#CECBF6;
-    --teal:#5DCAA5;--teal-bg:#04342C;--teal-fg:#9FE1CB;
-    --coral:#F0997B;--coral-bg:#4A1B0C;
-    --red:#F09595;--red-bg:#501313;--red-fg:#F7C1C1;
-    --green:#97C459;--green-bg:#173404;--green-fg:#C0DD97;
-    --amber:#EF9F27;--amber-bg:#412402;
-    --border:#333335;--border2:#444446;
-  }
-}
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #18181a;
+          --bg2: #222224;
+          --bg3: #2c2c2e;
+          --fg: #e8e8e4;
+          --fg2: #a0a09a;
+          --fg3: #6a6a64;
+          --accent: #afa9ec;
+          --accent-bg: #26215c;
+          --accent-fg: #cecbf6;
+          --teal: #5dcaa5;
+          --teal-bg: #04342c;
+          --teal-fg: #9fe1cb;
+          --coral: #f0997b;
+          --coral-bg: #4a1b0c;
+          --red: #f09595;
+          --red-bg: #501313;
+          --red-fg: #f7c1c1;
+          --green: #97c459;
+          --green-bg: #173404;
+          --green-fg: #c0dd97;
+          --amber: #ef9f27;
+          --amber-bg: #412402;
+          --border: #333335;
+          --border2: #444446;
+        }
+      }
 
-html{font-size:16px;-webkit-font-smoothing:antialiased}
-body{background:var(--bg);color:var(--fg);font-family:var(--font-body);line-height:1.7;padding:0}
+      html {
+        font-size: 16px;
+        -webkit-font-smoothing: antialiased;
+      }
+      body {
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--font-body);
+        line-height: 1.7;
+        padding: 0;
+      }
 
-.page{max-width:var(--max-w);margin:0 auto;padding:3rem 1.5rem 5rem}
+      .page {
+        max-width: var(--max-w);
+        margin: 0 auto;
+        padding: 3rem 1.5rem 5rem;
+      }
 
-h1{font-family:var(--font-serif);font-weight:600;font-size:2rem;line-height:1.2;margin:0 0 0.5rem;letter-spacing:-0.02em}
-h2{font-family:var(--font-serif);font-weight:600;font-size:1.35rem;line-height:1.3;margin:2.5rem 0 0.75rem;letter-spacing:-0.01em}
-h3{font-family:var(--font-body);font-weight:600;font-size:1rem;margin:1.5rem 0 0.5rem}
+      h1 {
+        font-family: var(--font-serif);
+        font-weight: 600;
+        font-size: 2rem;
+        line-height: 1.2;
+        margin: 0 0 0.5rem;
+        letter-spacing: -0.02em;
+      }
+      h2 {
+        font-family: var(--font-serif);
+        font-weight: 600;
+        font-size: 1.35rem;
+        line-height: 1.3;
+        margin: 2.5rem 0 0.75rem;
+        letter-spacing: -0.01em;
+      }
+      h3 {
+        font-family: var(--font-body);
+        font-weight: 600;
+        font-size: 1rem;
+        margin: 1.5rem 0 0.5rem;
+      }
 
-p{margin:0 0 1rem;color:var(--fg)}
-p+p{margin-top:0}
+      p {
+        margin: 0 0 1rem;
+        color: var(--fg);
+      }
+      p + p {
+        margin-top: 0;
+      }
 
-.subtitle{font-size:1.05rem;color:var(--fg2);margin:0 0 0.25rem;font-family:var(--font-serif);font-style:italic}
-.byline{font-size:0.8rem;color:var(--fg3);margin:0 0 2.5rem}
-.byline a{color:var(--fg3);text-decoration:underline;text-underline-offset:2px}
-.byline a:hover{color:var(--fg2)}
+      .subtitle {
+        font-size: 1.05rem;
+        color: var(--fg2);
+        margin: 0 0 0.25rem;
+        font-family: var(--font-serif);
+        font-style: italic;
+      }
+      .byline {
+        font-size: 0.8rem;
+        color: var(--fg3);
+        margin: 0 0 2.5rem;
+      }
+      .byline a {
+        color: var(--fg3);
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+      .byline a:hover {
+        color: var(--fg2);
+      }
 
-a{color:var(--accent)}
-a:hover{text-decoration:underline}
+      a {
+        color: var(--accent);
+      }
+      a:hover {
+        text-decoration: underline;
+      }
 
-code{font-family:var(--font-mono);font-size:0.85em;background:var(--bg2);padding:0.15em 0.35em;border-radius:4px;color:var(--fg)}
+      code {
+        font-family: var(--font-mono);
+        font-size: 0.85em;
+        background: var(--bg2);
+        padding: 0.15em 0.35em;
+        border-radius: 4px;
+        color: var(--fg);
+      }
 
-.callout{background:var(--accent-bg);border-left:3px solid var(--accent);padding:0.75rem 1rem;border-radius:0 8px 8px 0;margin:1.25rem 0;font-size:0.9rem;color:var(--accent-fg)}
-.callout-teal{background:var(--teal-bg);border-color:var(--teal);color:var(--teal-fg)}
+      .callout {
+        background: var(--accent-bg);
+        border-left: 3px solid var(--accent);
+        padding: 0.75rem 1rem;
+        border-radius: 0 8px 8px 0;
+        margin: 1.25rem 0;
+        font-size: 0.9rem;
+        color: var(--accent-fg);
+      }
+      .callout-teal {
+        background: var(--teal-bg);
+        border-color: var(--teal);
+        color: var(--teal-fg);
+      }
 
-.diagram-card{background:var(--bg2);border:0.5px solid var(--border);border-radius:12px;padding:1.25rem;margin:1.5rem 0}
-.diagram-label{font-size:0.75rem;color:var(--fg3);text-transform:uppercase;letter-spacing:0.06em;margin:0 0 0.75rem;font-family:var(--font-mono)}
+      .diagram-card {
+        background: var(--bg2);
+        border: 0.5px solid var(--border);
+        border-radius: 12px;
+        padding: 1.25rem;
+        margin: 1.5rem 0;
+      }
+      .diagram-label {
+        font-size: 0.75rem;
+        color: var(--fg3);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin: 0 0 0.75rem;
+        font-family: var(--font-mono);
+      }
 
-.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:1.25rem 0}
-.stat{background:var(--bg2);border-radius:8px;padding:0.75rem 1rem}
-.stat-val{font-size:1.5rem;font-weight:600;font-family:var(--font-mono);line-height:1.2}
-.stat-label{font-size:0.75rem;color:var(--fg3);margin-top:2px}
+      .stats-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 10px;
+        margin: 1.25rem 0;
+      }
+      .stat {
+        background: var(--bg2);
+        border-radius: 8px;
+        padding: 0.75rem 1rem;
+      }
+      .stat-val {
+        font-size: 1.5rem;
+        font-weight: 600;
+        font-family: var(--font-mono);
+        line-height: 1.2;
+      }
+      .stat-label {
+        font-size: 0.75rem;
+        color: var(--fg3);
+        margin-top: 2px;
+      }
 
-.boundary-table{width:100%;border-collapse:collapse;font-size:0.85rem;margin:1rem 0}
-.boundary-table th{text-align:left;font-weight:500;color:var(--fg3);padding:0.5rem 0.75rem;border-bottom:1px solid var(--border);font-size:0.75rem;text-transform:uppercase;letter-spacing:0.04em}
-.boundary-table td{padding:0.5rem 0.75rem;border-bottom:0.5px solid var(--border);vertical-align:top}
-.boundary-table tr:last-child td{border-bottom:none}
-.tag{display:inline-block;font-size:0.7rem;padding:2px 8px;border-radius:4px;font-family:var(--font-mono);font-weight:500}
-.tag-node{background:var(--teal-bg);color:var(--teal-fg)}
-.tag-otp{background:var(--accent-bg);color:var(--accent-fg)}
-.tag-both{background:var(--bg3);color:var(--fg2)}
+      .boundary-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+        margin: 1rem 0;
+      }
+      .boundary-table th {
+        text-align: left;
+        font-weight: 500;
+        color: var(--fg3);
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid var(--border);
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .boundary-table td {
+        padding: 0.5rem 0.75rem;
+        border-bottom: 0.5px solid var(--border);
+        vertical-align: top;
+      }
+      .boundary-table tr:last-child td {
+        border-bottom: none;
+      }
+      .tag {
+        display: inline-block;
+        font-size: 0.7rem;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-family: var(--font-mono);
+        font-weight: 500;
+      }
+      .tag-node {
+        background: var(--teal-bg);
+        color: var(--teal-fg);
+      }
+      .tag-otp {
+        background: var(--accent-bg);
+        color: var(--accent-fg);
+      }
+      .tag-both {
+        background: var(--bg3);
+        color: var(--fg2);
+      }
 
-hr{border:none;border-top:0.5px solid var(--border);margin:2.5rem 0}
+      hr {
+        border: none;
+        border-top: 0.5px solid var(--border);
+        margin: 2.5rem 0;
+      }
 
-.mode-pills{display:flex;gap:6px;margin:0 0 14px}
-.mpill{padding:7px 14px;font-size:0.8rem;border-radius:8px;border:0.5px solid var(--border2);background:transparent;color:var(--fg2);cursor:pointer;transition:all .15s;font-family:var(--font-body);font-weight:500}
-.mpill:hover{border-color:var(--fg3)}
-.mpill.active-node{background:var(--teal-bg);color:var(--teal-fg);border-color:var(--teal)}
-.mpill.active-otp{background:var(--accent-bg);color:var(--accent-fg);border-color:var(--accent)}
-.sessions{display:flex;gap:8px;margin:0 0 10px}
-.sess{flex:1;border:0.5px solid var(--border);border-radius:8px;padding:8px;text-align:center;transition:all .4s}
-.sess-label{font-size:0.7rem;color:var(--fg3);margin:0 0 5px;font-family:var(--font-mono)}
-.sess-dot{width:8px;height:8px;border-radius:50%;margin:0 auto 5px;transition:background .3s}
-.dot-ok{background:var(--green)}
-.dot-crash{background:var(--red)}
-.dot-degraded{background:var(--amber)}
-.dot-restarted{background:var(--teal)}
-.sess-status{font-size:0.65rem;font-family:var(--font-mono);min-height:14px;transition:color .3s}
-.st-ok{color:var(--green)}
-.st-crash{color:var(--red)}
-.st-degraded{color:var(--amber)}
-.st-restarted{color:var(--teal)}
-.heap-bar{height:20px;border-radius:4px;background:var(--bg3);border:0.5px solid var(--border);margin:0 0 4px;position:relative;overflow:hidden}
-.heap-fill{height:100%;border-radius:3px;transition:width .6s,background .4s;width:15%}
-.heap-fill-ok{background:var(--green)}
-.heap-fill-grow{background:var(--red)}
-.heap-label{font-size:0.7rem;color:var(--fg3);text-align:center;margin:0 0 10px;font-family:var(--font-mono)}
-.per-heaps{display:flex;gap:8px;margin:0 0 4px}
-.per-heap{flex:1}
-.per-heap .heap-bar{height:14px}
-.crash-btn{padding:6px 16px;font-size:0.8rem;border-radius:8px;border:0.5px solid var(--red);background:transparent;color:var(--red);cursor:pointer;transition:all .15s;font-family:var(--font-body)}
-.crash-btn:hover{background:var(--red-bg)}
-.crash-btn:disabled{opacity:.35;cursor:default;background:transparent}
-.reset-btn{padding:6px 16px;font-size:0.8rem;border-radius:8px;border:0.5px solid var(--border2);background:transparent;color:var(--fg3);cursor:pointer;font-family:var(--font-body)}
-.reset-btn:hover{border-color:var(--fg3)}
-.controls{display:flex;align-items:center;gap:8px;margin:10px 0 0}
-.outcome{font-size:0.8rem;color:var(--fg2);margin:10px 0 0;min-height:32px;line-height:1.5}
+      .mode-pills {
+        display: flex;
+        gap: 6px;
+        margin: 0 0 14px;
+      }
+      .mpill {
+        padding: 7px 14px;
+        font-size: 0.8rem;
+        border-radius: 8px;
+        border: 0.5px solid var(--border2);
+        background: transparent;
+        color: var(--fg2);
+        cursor: pointer;
+        transition: all 0.15s;
+        font-family: var(--font-body);
+        font-weight: 500;
+      }
+      .mpill:hover {
+        border-color: var(--fg3);
+      }
+      .mpill.active-node {
+        background: var(--teal-bg);
+        color: var(--teal-fg);
+        border-color: var(--teal);
+      }
+      .mpill.active-otp {
+        background: var(--accent-bg);
+        color: var(--accent-fg);
+        border-color: var(--accent);
+      }
+      .sessions {
+        display: flex;
+        gap: 8px;
+        margin: 0 0 10px;
+      }
+      .sess {
+        flex: 1;
+        border: 0.5px solid var(--border);
+        border-radius: 8px;
+        padding: 8px;
+        text-align: center;
+        transition: all 0.4s;
+      }
+      .sess-label {
+        font-size: 0.7rem;
+        color: var(--fg3);
+        margin: 0 0 5px;
+        font-family: var(--font-mono);
+      }
+      .sess-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin: 0 auto 5px;
+        transition: background 0.3s;
+      }
+      .dot-ok {
+        background: var(--green);
+      }
+      .dot-crash {
+        background: var(--red);
+      }
+      .dot-degraded {
+        background: var(--amber);
+      }
+      .dot-restarted {
+        background: var(--teal);
+      }
+      .sess-status {
+        font-size: 0.65rem;
+        font-family: var(--font-mono);
+        min-height: 14px;
+        transition: color 0.3s;
+      }
+      .st-ok {
+        color: var(--green);
+      }
+      .st-crash {
+        color: var(--red);
+      }
+      .st-degraded {
+        color: var(--amber);
+      }
+      .st-restarted {
+        color: var(--teal);
+      }
+      .heap-bar {
+        height: 20px;
+        border-radius: 4px;
+        background: var(--bg3);
+        border: 0.5px solid var(--border);
+        margin: 0 0 4px;
+        position: relative;
+        overflow: hidden;
+      }
+      .heap-fill {
+        height: 100%;
+        border-radius: 3px;
+        transition:
+          width 0.6s,
+          background 0.4s;
+        width: 15%;
+      }
+      .heap-fill-ok {
+        background: var(--green);
+      }
+      .heap-fill-grow {
+        background: var(--red);
+      }
+      .heap-label {
+        font-size: 0.7rem;
+        color: var(--fg3);
+        text-align: center;
+        margin: 0 0 10px;
+        font-family: var(--font-mono);
+      }
+      .per-heaps {
+        display: flex;
+        gap: 8px;
+        margin: 0 0 4px;
+      }
+      .per-heap {
+        flex: 1;
+      }
+      .per-heap .heap-bar {
+        height: 14px;
+      }
+      .crash-btn {
+        padding: 6px 16px;
+        font-size: 0.8rem;
+        border-radius: 8px;
+        border: 0.5px solid var(--red);
+        background: transparent;
+        color: var(--red);
+        cursor: pointer;
+        transition: all 0.15s;
+        font-family: var(--font-body);
+      }
+      .crash-btn:hover {
+        background: var(--red-bg);
+      }
+      .crash-btn:disabled {
+        opacity: 0.35;
+        cursor: default;
+        background: transparent;
+      }
+      .reset-btn {
+        padding: 6px 16px;
+        font-size: 0.8rem;
+        border-radius: 8px;
+        border: 0.5px solid var(--border2);
+        background: transparent;
+        color: var(--fg3);
+        cursor: pointer;
+        font-family: var(--font-body);
+      }
+      .reset-btn:hover {
+        border-color: var(--fg3);
+      }
+      .controls {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 10px 0 0;
+      }
+      .outcome {
+        font-size: 0.8rem;
+        color: var(--fg2);
+        margin: 10px 0 0;
+        min-height: 32px;
+        line-height: 1.5;
+      }
 
-.svg-boundary{width:100%}
-.svg-boundary text{font-family:'DM Sans',system-ui,sans-serif}
+      .svg-boundary {
+        width: 100%;
+      }
+      .svg-boundary text {
+        font-family: "DM Sans", system-ui, sans-serif;
+      }
 
-.footer{margin-top:3rem;padding-top:1.5rem;border-top:0.5px solid var(--border);font-size:0.8rem;color:var(--fg3)}
-.footer a{color:var(--fg3)}
+      .footer {
+        margin-top: 3rem;
+        padding-top: 1.5rem;
+        border-top: 0.5px solid var(--border);
+        font-size: 0.8rem;
+        color: var(--fg3);
+      }
+      .footer a {
+        color: var(--fg3);
+      }
 
-.repo-link{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:0.5px solid var(--border2);border-radius:8px;font-size:0.85rem;color:var(--fg);text-decoration:none;transition:all .15s;margin:1rem 0}
-.repo-link:hover{border-color:var(--fg3);background:var(--bg2);text-decoration:none}
+      .repo-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 16px;
+        border: 0.5px solid var(--border2);
+        border-radius: 8px;
+        font-size: 0.85rem;
+        color: var(--fg);
+        text-decoration: none;
+        transition: all 0.15s;
+        margin: 1rem 0;
+      }
+      .repo-link:hover {
+        border-color: var(--fg3);
+        background: var(--bg2);
+        text-decoration: none;
+      }
 
-.conv-row{display:flex;align-items:stretch;gap:0;margin:3px 0;min-height:36px}
-.conv-need{flex:0 0 150px;display:flex;align-items:center;font-size:0.8rem;font-weight:500;color:var(--fg);padding-right:10px}
-.conv-mid{flex:1;display:flex;align-items:center;gap:5px;flex-wrap:wrap;border-left:0.5px solid var(--border);border-right:0.5px solid var(--border);padding:4px 10px;min-height:32px}
-.conv-otp{flex:0 0 140px;display:flex;align-items:center;padding-left:10px;font-family:var(--font-mono);font-size:0.75rem}
-.chip{padding:2px 7px;border-radius:4px;font-size:0.65rem;white-space:nowrap;font-family:var(--font-mono)}
-.chip-fw{background:var(--bg3);color:var(--fg2)}
-.chip-t3{background:var(--teal-bg);color:var(--teal-fg);font-weight:500}
-.chip-t3-gap{background:transparent;color:var(--teal);border:1px dashed var(--teal);font-weight:500}
-.chip-otp{background:var(--accent-bg);color:var(--accent-fg);font-weight:500}
-.conv-hdr{display:flex;gap:0;margin:0 0 6px;padding:0 0 5px;border-bottom:0.5px solid var(--border)}
-.conv-hdr>div:first-child{flex:0 0 150px}
-.conv-hdr>div:nth-child(2){flex:1;text-align:center}
-.conv-hdr>div:last-child{flex:0 0 140px;padding-left:10px}
-.conv-hdr-label{font-size:0.65rem;color:var(--fg3);text-transform:uppercase;letter-spacing:0.05em;font-weight:500}
-.conv-note{font-size:0.75rem;color:var(--fg3);margin:10px 0 0;line-height:1.5}
-blockquote{border-left:2px solid var(--border2);padding-left:1rem;margin:1rem 0;color:var(--fg2);font-family:var(--font-serif);font-style:italic;font-size:0.95rem}
-blockquote a{color:var(--accent)}
-</style>
-</head>
-<body>
-<div class="page">
+      .conv-row {
+        display: flex;
+        align-items: stretch;
+        gap: 0;
+        margin: 3px 0;
+        min-height: 36px;
+      }
+      .conv-need {
+        flex: 0 0 150px;
+        display: flex;
+        align-items: center;
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: var(--fg);
+        padding-right: 10px;
+      }
+      .conv-mid {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        flex-wrap: wrap;
+        border-left: 0.5px solid var(--border);
+        border-right: 0.5px solid var(--border);
+        padding: 4px 10px;
+        min-height: 32px;
+      }
+      .conv-otp {
+        flex: 0 0 140px;
+        display: flex;
+        align-items: center;
+        padding-left: 10px;
+        font-family: var(--font-mono);
+        font-size: 0.75rem;
+      }
+      .chip {
+        padding: 2px 7px;
+        border-radius: 4px;
+        font-size: 0.65rem;
+        white-space: nowrap;
+        font-family: var(--font-mono);
+      }
+      .chip-fw {
+        background: var(--bg3);
+        color: var(--fg2);
+      }
+      .chip-t3 {
+        background: var(--teal-bg);
+        color: var(--teal-fg);
+        font-weight: 500;
+      }
+      .chip-t3-gap {
+        background: transparent;
+        color: var(--teal);
+        border: 1px dashed var(--teal);
+        font-weight: 500;
+      }
+      .chip-otp {
+        background: var(--accent-bg);
+        color: var(--accent-fg);
+        font-weight: 500;
+      }
+      .conv-hdr {
+        display: flex;
+        gap: 0;
+        margin: 0 0 6px;
+        padding: 0 0 5px;
+        border-bottom: 0.5px solid var(--border);
+      }
+      .conv-hdr > div:first-child {
+        flex: 0 0 150px;
+      }
+      .conv-hdr > div:nth-child(2) {
+        flex: 1;
+        text-align: center;
+      }
+      .conv-hdr > div:last-child {
+        flex: 0 0 140px;
+        padding-left: 10px;
+      }
+      .conv-hdr-label {
+        font-size: 0.65rem;
+        color: var(--fg3);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-weight: 500;
+      }
+      .conv-note {
+        font-size: 0.75rem;
+        color: var(--fg3);
+        margin: 10px 0 0;
+        line-height: 1.5;
+      }
+      blockquote {
+        border-left: 2px solid var(--border2);
+        padding-left: 1rem;
+        margin: 1rem 0;
+        color: var(--fg2);
+        font-family: var(--font-serif);
+        font-style: italic;
+        font-size: 0.95rem;
+      }
+      blockquote a {
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <h1>Why T3Code might want two runtimes</h1>
+      <p class="subtitle">
+        OTP supervision for multi-provider AI agents — an additive architectural exploration
+      </p>
+      <p class="byline">
+        <a href="https://github.com/ranvier2d2">Bastian Venegas Arevalo</a> · Ranvier Technologies ·
+        Relates to <a href="https://github.com/pingdotgg/t3code/pull/581">PR #581</a>
+      </p>
 
-<h1>Why T3Code might want two runtimes</h1>
-<p class="subtitle">OTP supervision for multi-provider AI agents — an additive architectural exploration</p>
-<p class="byline">
-  <a href="https://github.com/ranvier2d2">Bastian Venegas Arevalo</a> · Ranvier Technologies
-  · Relates to <a href="https://github.com/pingdotgg/t3code/pull/581">PR #581</a>
-</p>
+      <p>
+        T3Code's <a href="https://github.com/pingdotgg/t3code/pull/581">PR #581</a> centralizes
+        harness adapters behind a single <code>HarnessService</code> WebSocket server with event
+        projection via <code>projector.ts</code>. This is the right direction — a unified contract
+        across providers is exactly what multi-agent orchestration needs.
+      </p>
+      <p>
+        This page explores what happens when you take that same contract and add an OTP supervision
+        layer underneath it. Not replacing the Node server — extending it with structural guarantees
+        for the part that's hardest to get right: managing concurrent, crash-prone agent sessions.
+      </p>
 
-<p>
-  T3Code's <a href="https://github.com/pingdotgg/t3code/pull/581">PR #581</a> centralizes harness adapters behind a single <code>HarnessService</code> WebSocket server with event projection via <code>projector.ts</code>. This is the right direction — a unified contract across providers is exactly what multi-agent orchestration needs.
-</p>
-<p>
-  This page explores what happens when you take that same contract and add an OTP supervision layer underneath it. Not replacing the Node server — extending it with structural guarantees for the part that's hardest to get right: managing concurrent, crash-prone agent sessions.
-</p>
+      <div class="callout">
+        This is an independent experiment. Not affiliated with or endorsed by the T3Code team. The
+        T3Code team has their own roadmap — this is one developer's architectural exploration.
+      </div>
 
-<div class="callout">
-  This is an independent experiment. Not affiliated with or endorsed by the T3Code team.
-  The T3Code team has their own roadmap — this is one developer's architectural exploration.
-</div>
+      <h2>The constraint that shapes everything</h2>
 
-<h2>The constraint that shapes everything</h2>
+      <p>
+        Anthropic only lets you access Claude Code through a Claude Max subscription (instead of
+        per-usage API billing) if you use their <strong>Agent SDK</strong>. The Agent SDK is
+        implemented in Node. There is no Elixir version. So Claude and Codex <em>must</em> stay Node
+        — that's non-negotiable.
+      </p>
+      <p>
+        This means any OTP layer has to be additive. It sits underneath the existing Node server,
+        connected by a single WebSocket, handling supervision and lifecycle while Node retains SDK
+        access, persistence, and TypeScript contracts.
+      </p>
 
-<p>
-  Anthropic only lets you access Claude Code through a Claude Max subscription (instead of per-usage API billing) if you use their <strong>Agent SDK</strong>. The Agent SDK is implemented in Node. There is no Elixir version. So Claude and Codex <em>must</em> stay Node — that's non-negotiable.
-</p>
-<p>
-  This means any OTP layer has to be additive. It sits underneath the existing Node server, connected by a single WebSocket, handling supervision and lifecycle while Node retains SDK access, persistence, and TypeScript contracts.
-</p>
+      <h2>The convergence everyone's noticing</h2>
 
-<h2>The convergence everyone's noticing</h2>
+      <p>
+        This isn't a novel observation. George Guimarães
+        <a
+          href="https://www.yourstack.com/george-guimaraes/your-agent-framework-is-just-a-bad-clone-of-elixir"
+          >documented the same convergence</a
+        >
+        across LangGraph, AutoGen, CrewAI, and Langroid — every major agent framework is
+        independently reinventing the actor model. Isolated state, message passing, supervision
+        hierarchies, fault recovery: all solved problems on the BEAM since 1986.
+      </p>
 
-<p>
-  This isn't a novel observation. George Guimarães
-  <a href="https://www.yourstack.com/george-guimaraes/your-agent-framework-is-just-a-bad-clone-of-elixir">documented the same convergence</a>
-  across LangGraph, AutoGen, CrewAI, and Langroid — every major agent framework is independently
-  reinventing the actor model. Isolated state, message passing, supervision hierarchies, fault
-  recovery: all solved problems on the BEAM since 1986.
-</p>
+      <p>
+        T3Code's <code>HarnessService</code> centralization follows the same pattern. The question
+        isn't whether you need these primitives — you clearly do, that's what PR #581 is building.
+        The question is whether you build them in application code or get them from the runtime.
+      </p>
 
-<p>
-  T3Code's <code>HarnessService</code> centralization follows the same pattern.
-  The question isn't whether you need these primitives — you clearly do, that's what PR #581 is building.
-  The question is whether you build them in application code or get them from the runtime.
-</p>
+      <div class="diagram-card">
+        <div class="diagram-label">Convergence · what frameworks are reinventing</div>
 
-<div class="diagram-card">
-  <div class="diagram-label">Convergence · what frameworks are reinventing</div>
+        <div class="conv-hdr">
+          <div><span class="conv-hdr-label">What you need</span></div>
+          <div><span class="conv-hdr-label">Who's reinventing it</span></div>
+          <div><span class="conv-hdr-label">OTP primitive</span></div>
+        </div>
 
-  <div class="conv-hdr">
-    <div><span class="conv-hdr-label">What you need</span></div>
-    <div><span class="conv-hdr-label">Who's reinventing it</span></div>
-    <div><span class="conv-hdr-label">OTP primitive</span></div>
-  </div>
+        <div class="conv-row">
+          <div class="conv-need">Isolated agent state</div>
+          <div class="conv-mid">
+            <span class="chip chip-fw">LangGraph</span>
+            <span class="chip chip-fw">AutoGen 0.4</span>
+            <span class="chip chip-fw">CrewAI</span>
+            <span class="chip chip-t3">HarnessService</span>
+          </div>
+          <div class="conv-otp"><span class="chip chip-otp">GenServer</span></div>
+        </div>
 
-  <div class="conv-row">
-    <div class="conv-need">Isolated agent state</div>
-    <div class="conv-mid">
-      <span class="chip chip-fw">LangGraph</span>
-      <span class="chip chip-fw">AutoGen 0.4</span>
-      <span class="chip chip-fw">CrewAI</span>
-      <span class="chip chip-t3">HarnessService</span>
+        <div class="conv-row">
+          <div class="conv-need">Message passing</div>
+          <div class="conv-mid">
+            <span class="chip chip-fw">Langroid</span>
+            <span class="chip chip-fw">AutoGen 0.4</span>
+            <span class="chip chip-t3">harnessWs protocol</span>
+          </div>
+          <div class="conv-otp"><span class="chip chip-otp">send / receive</span></div>
+        </div>
+
+        <div class="conv-row">
+          <div class="conv-need">Crash recovery</div>
+          <div class="conv-mid">
+            <span class="chip chip-fw">Checkpoints</span>
+            <span class="chip chip-fw">try/except</span>
+            <span class="chip chip-t3-gap">missing</span>
+          </div>
+          <div class="conv-otp"><span class="chip chip-otp">Supervisor</span></div>
+        </div>
+
+        <div class="conv-row">
+          <div class="conv-need">Event projection</div>
+          <div class="conv-mid">
+            <span class="chip chip-fw">State reducers</span>
+            <span class="chip chip-t3">projector.ts</span>
+          </div>
+          <div class="conv-otp"><span class="chip chip-otp">ETS + GenServer</span></div>
+        </div>
+
+        <div class="conv-row">
+          <div class="conv-need">Memory isolation</div>
+          <div class="conv-mid">
+            <span class="chip chip-fw">asyncio (shared)</span>
+            <span class="chip chip-t3-gap">V8 shared heap</span>
+          </div>
+          <div class="conv-otp"><span class="chip chip-otp">Process heaps</span></div>
+        </div>
+
+        <div class="conv-row">
+          <div class="conv-need">Lifecycle mgmt</div>
+          <div class="conv-mid">
+            <span class="chip chip-fw">Runtime registry</span>
+            <span class="chip chip-t3">HarnessService</span>
+          </div>
+          <div class="conv-otp"><span class="chip chip-otp">DynamicSupervisor</span></div>
+        </div>
+
+        <p class="conv-note">
+          Green chips = T3Code PR #581 already solving this. Dashed = structural gap that OTP fills.
+          Framework analysis via
+          <a
+            href="https://www.yourstack.com/george-guimaraes/your-agent-framework-is-just-a-bad-clone-of-elixir"
+            >Guimarães (2026)</a
+          >.
+        </p>
+      </div>
+
+      <blockquote>
+        "You can get about 70% there with enough engineering. The remaining 30% — preemptive
+        scheduling, per-process garbage collection, true fault isolation — requires runtime-level
+        support." — George Guimarães
+      </blockquote>
+
+      <p>
+        Guimarães
+        <a
+          href="https://www.yourstack.com/george-guimaraes/elixir-beam-doesnt-solve-everything-for-ai-agents"
+          >later qualified this claim</a
+        >, noting that the BEAM's advantages vary by workload and honestly naming the ecosystem gaps
+        (immature LLM tooling, smaller talent pool, Python/Node-first SDKs). For T3Code specifically
+        — a desktop tool, not a server — two of the four properties he cites (preemptive scheduling,
+        hot code swapping) don't meaningfully apply. The two that do — per-process garbage
+        collection and true fault isolation — are the ones this exploration focuses on.
+      </p>
+
+      <p>
+        The <code>HarnessService</code> pattern is that 70%. It gives you centralized lifecycle,
+        event projection, and a unified contract. What it can't give you — because Node's V8 doesn't
+        support it — is per-session crash isolation and independent memory containment. That's the
+        30% that an OTP layer fills.
+      </p>
+
+      <h2>The proposed boundary</h2>
+
+      <div class="diagram-card">
+        <div class="diagram-label">Architecture · what stays, what moves</div>
+        <svg class="svg-boundary" viewBox="0 0 680 490">
+          <defs>
+            <marker
+              id="arrow"
+              viewBox="0 0 10 10"
+              refX="8"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto-start-reverse"
+            >
+              <path
+                d="M2 1L8 5L2 9"
+                fill="none"
+                stroke="context-stroke"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </marker>
+          </defs>
+
+          <rect
+            x="260"
+            y="10"
+            width="160"
+            height="38"
+            rx="8"
+            fill="var(--bg3)"
+            stroke="var(--border2)"
+            stroke-width="0.5"
+          />
+          <text
+            x="340"
+            y="33"
+            text-anchor="middle"
+            font-size="13"
+            font-weight="500"
+            fill="var(--fg)"
+          >
+            Browser / Electron
+          </text>
+          <line
+            x1="340"
+            y1="48"
+            x2="340"
+            y2="74"
+            stroke="var(--border2)"
+            stroke-width="1"
+            marker-end="url(#arrow)"
+          />
+
+          <rect
+            x="40"
+            y="76"
+            width="600"
+            height="160"
+            rx="16"
+            fill="var(--teal-bg)"
+            stroke="var(--teal)"
+            stroke-width="0.5"
+          />
+          <text
+            x="340"
+            y="100"
+            text-anchor="middle"
+            font-size="14"
+            font-weight="600"
+            fill="var(--teal-fg)"
+          >
+            Node server
+          </text>
+          <text
+            x="340"
+            y="116"
+            text-anchor="middle"
+            font-size="11"
+            fill="var(--teal)"
+            font-family="var(--font-mono)"
+          >
+            HarnessService + projector.ts (PR #581)
+          </text>
+
+          <rect
+            x="58"
+            y="134"
+            width="160"
+            height="48"
+            rx="8"
+            fill="var(--bg)"
+            stroke="var(--teal)"
+            stroke-width="0.5"
+          />
+          <text
+            x="138"
+            y="153"
+            text-anchor="middle"
+            font-size="12"
+            font-weight="500"
+            fill="var(--teal-fg)"
+          >
+            Agent SDK
+          </text>
+          <text x="138" y="170" text-anchor="middle" font-size="10" fill="var(--teal)">
+            Claude + Codex
+          </text>
+
+          <rect
+            x="240"
+            y="134"
+            width="150"
+            height="48"
+            rx="8"
+            fill="var(--bg)"
+            stroke="var(--teal)"
+            stroke-width="0.5"
+          />
+          <text
+            x="315"
+            y="153"
+            text-anchor="middle"
+            font-size="12"
+            font-weight="500"
+            fill="var(--teal-fg)"
+          >
+            projector.ts
+          </text>
+          <text x="315" y="170" text-anchor="middle" font-size="10" fill="var(--teal)">
+            Event projection
+          </text>
+
+          <rect
+            x="412"
+            y="134"
+            width="210"
+            height="48"
+            rx="8"
+            fill="var(--bg)"
+            stroke="var(--teal)"
+            stroke-width="0.5"
+          />
+          <text
+            x="517"
+            y="153"
+            text-anchor="middle"
+            font-size="12"
+            font-weight="500"
+            fill="var(--teal-fg)"
+          >
+            SQLite + TS contracts
+          </text>
+          <text x="517" y="170" text-anchor="middle" font-size="10" fill="var(--teal)">
+            Persistence + types
+          </text>
+
+          <text x="58" y="212" font-size="10" fill="var(--teal)" font-family="var(--font-mono)">
+            Agent SDK stays Node — Anthropic subscription constraint
+          </text>
+
+          <rect
+            x="290"
+            y="248"
+            width="100"
+            height="26"
+            rx="13"
+            fill="none"
+            stroke="var(--border2)"
+            stroke-width="0.5"
+            stroke-dasharray="4 2"
+          />
+          <text
+            x="340"
+            y="264"
+            text-anchor="middle"
+            font-size="10"
+            fill="var(--fg3)"
+            font-family="var(--font-mono)"
+          >
+            Phoenix WS
+          </text>
+          <line
+            x1="340"
+            y1="236"
+            x2="340"
+            y2="248"
+            stroke="var(--border2)"
+            stroke-width="1"
+            marker-end="url(#arrow)"
+          />
+          <line
+            x1="340"
+            y1="274"
+            x2="340"
+            y2="292"
+            stroke="var(--border2)"
+            stroke-width="1"
+            marker-end="url(#arrow)"
+          />
+
+          <rect
+            x="40"
+            y="294"
+            width="600"
+            height="176"
+            rx="16"
+            fill="var(--accent-bg)"
+            stroke="var(--accent)"
+            stroke-width="0.5"
+          />
+          <text
+            x="340"
+            y="318"
+            text-anchor="middle"
+            font-size="14"
+            font-weight="600"
+            fill="var(--accent-fg)"
+          >
+            OTP engine — additive layer
+          </text>
+          <text
+            x="340"
+            y="334"
+            text-anchor="middle"
+            font-size="11"
+            fill="var(--accent)"
+            font-family="var(--font-mono)"
+          >
+            Supervision + lifecycle + crash isolation
+          </text>
+
+          <rect
+            x="210"
+            y="350"
+            width="260"
+            height="32"
+            rx="8"
+            fill="var(--bg)"
+            stroke="var(--accent)"
+            stroke-width="0.5"
+          />
+          <text
+            x="340"
+            y="370"
+            text-anchor="middle"
+            font-size="12"
+            font-weight="500"
+            fill="var(--accent-fg)"
+          >
+            DynamicSupervisor
+          </text>
+
+          <line
+            x1="260"
+            y1="382"
+            x2="120"
+            y2="404"
+            stroke="var(--accent)"
+            stroke-width="0.5"
+            marker-end="url(#arrow)"
+          />
+          <line
+            x1="310"
+            y1="382"
+            x2="260"
+            y2="404"
+            stroke="var(--accent)"
+            stroke-width="0.5"
+            marker-end="url(#arrow)"
+          />
+          <line
+            x1="370"
+            y1="382"
+            x2="420"
+            y2="404"
+            stroke="var(--accent)"
+            stroke-width="0.5"
+            marker-end="url(#arrow)"
+          />
+          <line
+            x1="420"
+            y1="382"
+            x2="560"
+            y2="404"
+            stroke="var(--accent)"
+            stroke-width="0.5"
+            marker-end="url(#arrow)"
+          />
+
+          <rect
+            x="60"
+            y="406"
+            width="120"
+            height="42"
+            rx="8"
+            fill="var(--bg)"
+            stroke="var(--accent)"
+            stroke-width="0.5"
+          />
+          <text
+            x="120"
+            y="422"
+            text-anchor="middle"
+            font-size="11"
+            font-weight="500"
+            fill="var(--accent-fg)"
+          >
+            Claude
+          </text>
+          <text
+            x="120"
+            y="438"
+            text-anchor="middle"
+            font-size="9"
+            fill="var(--accent)"
+            font-family="var(--font-mono)"
+          >
+            GenServer
+          </text>
+
+          <rect
+            x="200"
+            y="406"
+            width="120"
+            height="42"
+            rx="8"
+            fill="var(--bg)"
+            stroke="var(--accent)"
+            stroke-width="0.5"
+          />
+          <text
+            x="260"
+            y="422"
+            text-anchor="middle"
+            font-size="11"
+            font-weight="500"
+            fill="var(--accent-fg)"
+          >
+            Codex
+          </text>
+          <text
+            x="260"
+            y="438"
+            text-anchor="middle"
+            font-size="9"
+            fill="var(--accent)"
+            font-family="var(--font-mono)"
+          >
+            GenServer
+          </text>
+
+          <rect
+            x="360"
+            y="406"
+            width="120"
+            height="42"
+            rx="8"
+            fill="var(--bg)"
+            stroke="var(--accent)"
+            stroke-width="0.5"
+          />
+          <text
+            x="420"
+            y="422"
+            text-anchor="middle"
+            font-size="11"
+            font-weight="500"
+            fill="var(--accent-fg)"
+          >
+            Cursor
+          </text>
+          <text
+            x="420"
+            y="438"
+            text-anchor="middle"
+            font-size="9"
+            fill="var(--accent)"
+            font-family="var(--font-mono)"
+          >
+            GenServer
+          </text>
+
+          <rect
+            x="500"
+            y="406"
+            width="120"
+            height="42"
+            rx="8"
+            fill="var(--bg)"
+            stroke="var(--accent)"
+            stroke-width="0.5"
+          />
+          <text
+            x="560"
+            y="422"
+            text-anchor="middle"
+            font-size="11"
+            font-weight="500"
+            fill="var(--accent-fg)"
+          >
+            OpenCode
+          </text>
+          <text
+            x="560"
+            y="438"
+            text-anchor="middle"
+            font-size="9"
+            fill="var(--accent)"
+            font-family="var(--font-mono)"
+          >
+            GenServer
+          </text>
+        </svg>
+      </div>
+
+      <table class="boundary-table">
+        <thead>
+          <tr>
+            <th>Concern</th>
+            <th>Owner</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Agent SDK access (Claude, Codex)</td>
+            <td>Node</td>
+            <td><span class="tag tag-node">stays</span></td>
+          </tr>
+          <tr>
+            <td>Canonical event types + contracts</td>
+            <td>Node (TypeScript)</td>
+            <td><span class="tag tag-node">stays</span></td>
+          </tr>
+          <tr>
+            <td>SQLite persistence</td>
+            <td>Node</td>
+            <td><span class="tag tag-node">stays</span></td>
+          </tr>
+          <tr>
+            <td>Browser / Electron WebSocket</td>
+            <td>Node</td>
+            <td><span class="tag tag-node">stays</span></td>
+          </tr>
+          <tr>
+            <td>Provider process supervision</td>
+            <td>Elixir (OTP)</td>
+            <td><span class="tag tag-otp">new</span></td>
+          </tr>
+          <tr>
+            <td>Crash isolation</td>
+            <td>Elixir (BEAM heaps)</td>
+            <td><span class="tag tag-otp">new</span></td>
+          </tr>
+          <tr>
+            <td>Per-session memory containment</td>
+            <td>Elixir (process heaps)</td>
+            <td><span class="tag tag-otp">new</span></td>
+          </tr>
+          <tr>
+            <td>Event normalization</td>
+            <td>Elixir</td>
+            <td><span class="tag tag-otp">new</span></td>
+          </tr>
+          <tr>
+            <td>Event projection + snapshot</td>
+            <td>Both</td>
+            <td><span class="tag tag-both">shared</span></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>The isolation argument</h2>
+
+      <p>
+        When you run 4+ concurrent agent sessions — especially with subagents — the V8 shared heap
+        becomes a liability. One leaky or crashing session affects every other session sharing that
+        process. OTP's per-process heaps make this structurally impossible. Try it:
+      </p>
+
+      <div class="diagram-card">
+        <div class="diagram-label">Interactive · crash a session, see what happens</div>
+
+        <div class="mode-pills">
+          <button class="mpill active-node" id="btn-node" onclick="setMode('node')">
+            Node — shared V8 heap
+          </button>
+          <button class="mpill" id="btn-otp" onclick="setMode('otp')">
+            OTP — per-process heaps
+          </button>
+        </div>
+
+        <div class="sessions" id="sessions"></div>
+
+        <div id="shared-heap-area">
+          <div class="heap-bar">
+            <div class="heap-fill heap-fill-ok" id="shared-fill" style="width: 18%"></div>
+          </div>
+          <div class="heap-label" id="shared-label">Shared V8 heap — 48 MB</div>
+        </div>
+
+        <div id="per-heap-area" style="display: none">
+          <div class="per-heaps" id="per-heaps"></div>
+          <div class="heap-label">Independent BEAM process heaps</div>
+        </div>
+
+        <div class="controls">
+          <button class="crash-btn" id="crash-btn" onclick="crashSession()">Crash session 3</button>
+          <button class="reset-btn" onclick="resetAll()">Reset</button>
+        </div>
+        <div class="outcome" id="outcome"></div>
+      </div>
+
+      <h2>Stress test results</h2>
+
+      <p>
+        8 test types, single-run results framed as architectural demonstrations — not statistical
+        claims. The structural properties (per-process heaps, supervision cleanup) are BEAM
+        guarantees, not observations.
+      </p>
+
+      <div class="stats-row">
+        <div class="stat">
+          <div class="stat-val" style="color: var(--red)">2,800%</div>
+          <div class="stat-label">V8 heap growth with 1 leaky session (48→158 MB)</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val" style="color: var(--green)">102%</div>
+          <div class="stat-label">BEAM memory with same leaky session</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val" style="color: var(--amber)">169ms</div>
+          <div class="stat-label">Node p99 event loop lag during leak</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val" style="color: var(--teal)">0</div>
+          <div class="stat-label">Sibling sessions affected in OTP</div>
+        </div>
+      </div>
+
+      <h3>The crossover point</h3>
+      <p>
+        We scaled concurrent sessions from 5 to 200, all streaming simultaneously. From 5 to 100,
+        both runtimes are functionally identical — you would not be able to tell them apart. At 150,
+        Node's event loop lag creeps to 199ms. At 200, Node collapses: latency jumps to 3.3 seconds,
+        throughput <em>drops</em> (the event loop is so saturated it processes fewer events, not
+        more), and event loop lag hits 1.2 seconds. Elixir at 200 sessions: 607ms latency, 18,000
+        events/sec, 0% scheduler utilization, constant ~268KB per session.
+      </p>
+      <p>
+        This is the number that matters: if T3Code stays at 1–10 sessions, PR #581's Node approach
+        is simpler and sufficient. If it grows into a control plane with concurrent subagent trees,
+        the structural advantage materializes around 150 sessions — and it's not gradual. It's a
+        cliff.
+      </p>
+
+      <h3>Real workload: 10 subagents across 2 sessions</h3>
+      <p>
+        Codex in plan mode spawned 10 real subagents. Node oscillated 1.8–54 MB on the shared heap.
+        Elixir held 54–63 MB flat while processing 14,918 events and 824 tool calls. Both completed
+        all work — the difference is in predictability under load.
+      </p>
+
+      <h3>Honest scorecard</h3>
+      <p>
+        Elixir wins on isolation, observability, and per-session memory attribution. Node wins on
+        raw throughput and SDK ecosystem access. Hence: two runtimes, each handling what it does
+        best.
+      </p>
+
+      <h2>What adding a new provider costs</h2>
+
+      <div class="stats-row">
+        <div class="stat">
+          <div class="stat-val">~3,000</div>
+          <div class="stat-label">LOC per new TypeScript adapter (current)</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val" style="color: var(--accent)">500–700</div>
+          <div class="stat-label">LOC per new GenServer provider (OTP)</div>
+        </div>
+      </div>
+
+      <p>
+        Each new provider is a single GenServer module + a clause in
+        <code>SessionManager.provider_module/1</code>. No new TypeScript adapter. The centralized
+        <code>HarnessService</code> contract means the Node side doesn't change at all.
+      </p>
+
+      <h2>Why subagents change the calculus</h2>
+
+      <p>
+        If T3Code stayed a one-agent-at-a-time tool, I would not push hard for Elixir. Subagents
+        change the math. Imagine a future session:
+      </p>
+
+      <div
+        class="callout"
+        style="
+          font-family: var(--font-mono);
+          font-size: 0.85rem;
+          line-height: 1.8;
+          background: var(--bg2);
+          border-color: var(--border2);
+          color: var(--fg);
+        "
+      >
+        Parent task<br />
+        &nbsp;&nbsp;→ Codex subagent for implementation<br />
+        &nbsp;&nbsp;→ OpenCode subagent for search<br />
+        &nbsp;&nbsp;→ Claude subagent for synthesis
+      </div>
+
+      <p>Now ask the annoying questions:</p>
+
+      <p style="color: var(--fg2); font-style: italic; margin: 0.5rem 0 0.5rem 1rem">
+        What happens if one subagent crashes mid-turn?<br />
+        What happens if one subagent is blocked on approval while another keeps streaming?<br />
+        What happens if the parent cancels and all children must stop cleanly?<br />
+        What happens if one child leaks memory or gets wedged on reconnect?
+      </p>
+
+      <p>
+        A Node-only architecture can answer all of them — but it answers them behaviorally: careful
+        process accounting, careful cleanup chains, careful shared-state discipline. OTP answers
+        them structurally: each subagent is a GenServer under a
+        <code>DynamicSupervisor</code>, parent crash cascades to children via process links, one
+        child's memory leak is contained to its own heap, and restart policies are declarative, not
+        imperative.
+      </p>
+      <p>
+        The more autonomous and unpredictable agents become, the stronger this argument gets. "Start
+        child, monitor child, restart child, stop subtree" stop being architecture words. They
+        become the product.
+      </p>
+
+      <h2>Honest tradeoffs</h2>
+
+      <p>
+        <strong>BEAM runtime adds ~60–80 MB to the Electron bundle.</strong>
+        That's real. For a desktop app, it matters. The counter-argument is that with 4+ concurrent
+        sessions running subagents, you're already in "supervise a tree of unstable runtimes"
+        territory — and that's literally what OTP was designed for. But the bundle size cost is
+        worth acknowledging upfront.
+      </p>
+      <p>
+        <strong>It's a second runtime to maintain.</strong>
+        The Elixir ecosystem is smaller than Node's. Hiring is harder. The mitigation is that the
+        OTP layer is intentionally thin (total ~3,900 LOC across all modules) — it does one thing
+        well and delegates everything else to Node.
+      </p>
+      <p>
+        <strong>The bridge WebSocket is an additional failure surface.</strong>
+        In the Node-only approach, events flow directly — no bridge, no extra hop. With the harness,
+        there's a Phoenix Channel between Elixir and Node. That adds ~1ms of latency (invisible for
+        most operations) but also a real failure mode: if the bridge drops during a streaming turn,
+        events are lost until reconnection. The WAL ring buffer mitigates this with replay, but the
+        failure mode does not exist in a single-runtime design.
+      </p>
+      <p>
+        <strong>Cross-runtime debugging is objectively harder.</strong>
+        When something fails in Node, you get a continuous stack trace. With the harness, an error
+        can start in Elixir (GenServer crash), manifest in Node (bridge disconnect), and surface in
+        the browser (events stop). Two log systems, two debuggers. This is a cost that compounds
+        over time if the boundary isn't sharp.
+      </p>
+      <p>
+        <strong>The Agent SDK constraint is real and permanent.</strong>
+        As long as Anthropic gates subscription-based Claude Code access through their Node SDK,
+        Claude and Codex must route through Node. The OTP layer manages the provider process
+        lifecycle, but the SDK call itself stays in the Node adapter. This is a feature, not a bug —
+        it respects the ecosystem as it exists.
+      </p>
+
+      <hr />
+
+      <div class="callout callout-teal">
+        This fork is offered as an architectural exploration, not a merge request. The goal is to
+        contribute to the discussion — and honestly, to learn from it. Theo has more experience
+        shipping Node + Electron at scale than most people writing about this topic. If this whole
+        OTP angle is an over-engineered solution to a problem that doesn't materialize in practice,
+        that's a genuinely useful answer. The worst outcome isn't "no" — it's building something
+        nobody pressure-tested with someone who actually knows the terrain.
+      </div>
+
+      <a class="repo-link" href="https://github.com/Ranvier-Technologies/t3code-OTP">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path
+            d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+          />
+        </svg>
+        View the fork on GitHub
+      </a>
+
+      <hr />
+
+      <h2 style="color: var(--fg3); font-size: 1.1rem">Addendum: failure scenario scorecard</h2>
+
+      <p style="font-size: 0.85rem; color: var(--fg2)">
+        We compared both approaches across ten concrete failure scenarios. Not benchmarks — failure
+        scenarios. Because the OTP argument is not about throughput. It's about what happens when
+        things go wrong.
+      </p>
+
+      <table class="boundary-table" style="font-size: 0.8rem">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Scenario</th>
+            <th>Node</th>
+            <th>Elixir</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td>Provider CLI hangs</td>
+            <td>Session stale, others unaffected</td>
+            <td>GenServer stale, others unaffected</td>
+            <td><span class="tag tag-both">tie</span></td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td>Provider CLI crashes</td>
+            <td><code>child.on("exit")</code> cleans up</td>
+            <td>Port exit handled, supervisor cleanup</td>
+            <td><span class="tag tag-both">tie</span></td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td>Memory leak in one session</td>
+            <td>Shared heap +145MB, lag +169ms p99</td>
+            <td>Leak bounded per-process (94–352KB)</td>
+            <td><span class="tag tag-otp">elixir</span></td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td>Unhandled exception</td>
+            <td>5/5 survivors continue</td>
+            <td>5/5 survivors continue</td>
+            <td><span class="tag tag-both">tie</span></td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td>50+ concurrent sessions</td>
+            <td>Degrades at ~150 (3.3s p99 at 200)</td>
+            <td>607ms at 200, 0% scheduler util</td>
+            <td><span class="tag tag-otp">elixir</span></td>
+          </tr>
+          <tr>
+            <td>6</td>
+            <td>Process spawn/teardown churn</td>
+            <td>OS handles it</td>
+            <td>Port + process links, similar</td>
+            <td><span class="tag tag-both">tie</span></td>
+          </tr>
+          <tr>
+            <td>7</td>
+            <td>Subagent trees</td>
+            <td>Manual parent-child tracking</td>
+            <td>DynamicSupervisor, process links</td>
+            <td><span class="tag tag-otp">elixir</span></td>
+          </tr>
+          <tr>
+            <td>8</td>
+            <td>Bridge WebSocket disconnect</td>
+            <td>Does not exist — events flow directly</td>
+            <td>Events lost until reconnection</td>
+            <td><span class="tag tag-node">node</span></td>
+          </tr>
+          <tr>
+            <td>9</td>
+            <td>Development complexity</td>
+            <td>One language, one debugger</td>
+            <td>Two languages, cross-runtime debugging</td>
+            <td><span class="tag tag-node">node</span></td>
+          </tr>
+          <tr>
+            <td>10</td>
+            <td>Desktop packaging</td>
+            <td>Electron bundles Node, zero extra cost</td>
+            <td>+50–100MB BEAM runtime</td>
+            <td><span class="tag tag-node">node</span></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p style="font-size: 0.85rem; color: var(--fg2)">
+        <strong style="color: var(--fg)">Score: Elixir 3, Node 3, Tie 4.</strong>
+        But the scores are not equal in weight. Elixir's wins (3, 5, 7) are the ones that scale
+        worst if left unaddressed — memory coupling compounds over hours of use, event loop
+        saturation hits a cliff at ~150 sessions, and subagent cleanup chains grow with tree depth.
+        Node's wins (8, 9, 10) are present-tense shipping costs. Both are real. The question is
+        which set of problems you'd rather have.
+      </p>
+
+      <p style="font-size: 0.85rem; color: var(--fg2)">
+        <strong style="color: var(--fg)"
+          >A note on the "careful application code" failure class.</strong
+        >
+        These aren't hypothetical concerns — Macroscope's review of PR #581 itself found concrete
+        instances: adapter-emitted events pass through <code>#publish</code> without re-sequencing,
+        which can regress the global snapshot sequence and corrupt projections across all sessions;
+        <code>shutdownSession</code> aborts the event stream before the adapter completes,
+        potentially losing final <code>session.exited</code> events; and
+        <code>attachSession</code> never calls <code>#startStreaming</code>, leaving attached
+        sessions deaf to events. These are exactly the class of lifecycle gaps that OTP supervision
+        handles declaratively — not because the Node code is bad (it's early WIP and
+        well-structured), but because managing concurrent session lifecycles through application
+        code requires getting every edge case right manually. A supervisor doesn't have edge cases.
+        It has a restart policy.
+      </p>
+
+      <p style="font-size: 0.85rem; color: var(--fg2)">
+        For the full analysis with crossover benchmarks, methodology notes, and adversarial review:
+        <a href="https://ranvier-technologies.github.io/t3code-OTP/">complete writeup</a>.
+      </p>
+
+      <p class="footer">
+        Built by <a href="https://github.com/ranvier2d2">Bastian Venegas Arevalo</a> · CTO,
+        <a href="https://ranvier-technologies.com">Ranvier Technologies</a><br />
+        Full analysis with benchmarks:
+        <a href="https://ranvier-technologies.github.io/t3code-OTP/">complete writeup</a> · Stress
+        test methodology:
+        <a
+          href="https://github.com/Ranvier-Technologies/t3code-OTP/blob/main/output/stress-test/analysis.md"
+          >analysis.md</a
+        >
+      </p>
     </div>
-    <div class="conv-otp"><span class="chip chip-otp">GenServer</span></div>
-  </div>
 
-  <div class="conv-row">
-    <div class="conv-need">Message passing</div>
-    <div class="conv-mid">
-      <span class="chip chip-fw">Langroid</span>
-      <span class="chip chip-fw">AutoGen 0.4</span>
-      <span class="chip chip-t3">harnessWs protocol</span>
-    </div>
-    <div class="conv-otp"><span class="chip chip-otp">send / receive</span></div>
-  </div>
-
-  <div class="conv-row">
-    <div class="conv-need">Crash recovery</div>
-    <div class="conv-mid">
-      <span class="chip chip-fw">Checkpoints</span>
-      <span class="chip chip-fw">try/except</span>
-      <span class="chip chip-t3-gap">missing</span>
-    </div>
-    <div class="conv-otp"><span class="chip chip-otp">Supervisor</span></div>
-  </div>
-
-  <div class="conv-row">
-    <div class="conv-need">Event projection</div>
-    <div class="conv-mid">
-      <span class="chip chip-fw">State reducers</span>
-      <span class="chip chip-t3">projector.ts</span>
-    </div>
-    <div class="conv-otp"><span class="chip chip-otp">ETS + GenServer</span></div>
-  </div>
-
-  <div class="conv-row">
-    <div class="conv-need">Memory isolation</div>
-    <div class="conv-mid">
-      <span class="chip chip-fw">asyncio (shared)</span>
-      <span class="chip chip-t3-gap">V8 shared heap</span>
-    </div>
-    <div class="conv-otp"><span class="chip chip-otp">Process heaps</span></div>
-  </div>
-
-  <div class="conv-row">
-    <div class="conv-need">Lifecycle mgmt</div>
-    <div class="conv-mid">
-      <span class="chip chip-fw">Runtime registry</span>
-      <span class="chip chip-t3">HarnessService</span>
-    </div>
-    <div class="conv-otp"><span class="chip chip-otp">DynamicSupervisor</span></div>
-  </div>
-
-  <p class="conv-note">
-    Green chips = T3Code PR #581 already solving this. Dashed = structural gap that OTP fills.
-    Framework analysis via <a href="https://www.yourstack.com/george-guimaraes/your-agent-framework-is-just-a-bad-clone-of-elixir">Guimarães (2026)</a>.
-  </p>
-</div>
-
-<blockquote>
-  "You can get about 70% there with enough engineering. The remaining 30% — preemptive scheduling,
-  per-process garbage collection, true fault isolation — requires runtime-level support."
-  — George Guimarães
-</blockquote>
-
-<p>
-  Guimarães <a href="https://www.yourstack.com/george-guimaraes/elixir-beam-doesnt-solve-everything-for-ai-agents">later qualified this claim</a>,
-  noting that the BEAM's advantages vary by workload and honestly naming the ecosystem gaps
-  (immature LLM tooling, smaller talent pool, Python/Node-first SDKs). For T3Code specifically
-  — a desktop tool, not a server — two of the four properties he cites (preemptive scheduling,
-  hot code swapping) don't meaningfully apply. The two that do — per-process garbage collection
-  and true fault isolation — are the ones this exploration focuses on.
-</p>
-
-<p>
-  The <code>HarnessService</code> pattern is that 70%. It gives you centralized lifecycle, event
-  projection, and a unified contract. What it can't give you — because Node's V8 doesn't support
-  it — is per-session crash isolation and independent memory containment. That's the 30% that
-  an OTP layer fills.
-</p>
-
-<h2>The proposed boundary</h2>
-
-<div class="diagram-card">
-  <div class="diagram-label">Architecture · what stays, what moves</div>
-  <svg class="svg-boundary" viewBox="0 0 680 490">
-    <defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>
-
-    <rect x="260" y="10" width="160" height="38" rx="8" fill="var(--bg3)" stroke="var(--border2)" stroke-width="0.5"/>
-    <text x="340" y="33" text-anchor="middle" font-size="13" font-weight="500" fill="var(--fg)">Browser / Electron</text>
-    <line x1="340" y1="48" x2="340" y2="74" stroke="var(--border2)" stroke-width="1" marker-end="url(#arrow)"/>
-
-    <rect x="40" y="76" width="600" height="160" rx="16" fill="var(--teal-bg)" stroke="var(--teal)" stroke-width="0.5"/>
-    <text x="340" y="100" text-anchor="middle" font-size="14" font-weight="600" fill="var(--teal-fg)">Node server</text>
-    <text x="340" y="116" text-anchor="middle" font-size="11" fill="var(--teal)" font-family="var(--font-mono)">HarnessService + projector.ts (PR #581)</text>
-
-    <rect x="58" y="134" width="160" height="48" rx="8" fill="var(--bg)" stroke="var(--teal)" stroke-width="0.5"/>
-    <text x="138" y="153" text-anchor="middle" font-size="12" font-weight="500" fill="var(--teal-fg)">Agent SDK</text>
-    <text x="138" y="170" text-anchor="middle" font-size="10" fill="var(--teal)">Claude + Codex</text>
-
-    <rect x="240" y="134" width="150" height="48" rx="8" fill="var(--bg)" stroke="var(--teal)" stroke-width="0.5"/>
-    <text x="315" y="153" text-anchor="middle" font-size="12" font-weight="500" fill="var(--teal-fg)">projector.ts</text>
-    <text x="315" y="170" text-anchor="middle" font-size="10" fill="var(--teal)">Event projection</text>
-
-    <rect x="412" y="134" width="210" height="48" rx="8" fill="var(--bg)" stroke="var(--teal)" stroke-width="0.5"/>
-    <text x="517" y="153" text-anchor="middle" font-size="12" font-weight="500" fill="var(--teal-fg)">SQLite + TS contracts</text>
-    <text x="517" y="170" text-anchor="middle" font-size="10" fill="var(--teal)">Persistence + types</text>
-
-    <text x="58" y="212" font-size="10" fill="var(--teal)" font-family="var(--font-mono)">Agent SDK stays Node — Anthropic subscription constraint</text>
-
-    <rect x="290" y="248" width="100" height="26" rx="13" fill="none" stroke="var(--border2)" stroke-width="0.5" stroke-dasharray="4 2"/>
-    <text x="340" y="264" text-anchor="middle" font-size="10" fill="var(--fg3)" font-family="var(--font-mono)">Phoenix WS</text>
-    <line x1="340" y1="236" x2="340" y2="248" stroke="var(--border2)" stroke-width="1" marker-end="url(#arrow)"/>
-    <line x1="340" y1="274" x2="340" y2="292" stroke="var(--border2)" stroke-width="1" marker-end="url(#arrow)"/>
-
-    <rect x="40" y="294" width="600" height="176" rx="16" fill="var(--accent-bg)" stroke="var(--accent)" stroke-width="0.5"/>
-    <text x="340" y="318" text-anchor="middle" font-size="14" font-weight="600" fill="var(--accent-fg)">OTP engine — additive layer</text>
-    <text x="340" y="334" text-anchor="middle" font-size="11" fill="var(--accent)" font-family="var(--font-mono)">Supervision + lifecycle + crash isolation</text>
-
-    <rect x="210" y="350" width="260" height="32" rx="8" fill="var(--bg)" stroke="var(--accent)" stroke-width="0.5"/>
-    <text x="340" y="370" text-anchor="middle" font-size="12" font-weight="500" fill="var(--accent-fg)">DynamicSupervisor</text>
-
-    <line x1="260" y1="382" x2="120" y2="404" stroke="var(--accent)" stroke-width="0.5" marker-end="url(#arrow)"/>
-    <line x1="310" y1="382" x2="260" y2="404" stroke="var(--accent)" stroke-width="0.5" marker-end="url(#arrow)"/>
-    <line x1="370" y1="382" x2="420" y2="404" stroke="var(--accent)" stroke-width="0.5" marker-end="url(#arrow)"/>
-    <line x1="420" y1="382" x2="560" y2="404" stroke="var(--accent)" stroke-width="0.5" marker-end="url(#arrow)"/>
-
-    <rect x="60" y="406" width="120" height="42" rx="8" fill="var(--bg)" stroke="var(--accent)" stroke-width="0.5"/>
-    <text x="120" y="422" text-anchor="middle" font-size="11" font-weight="500" fill="var(--accent-fg)">Claude</text>
-    <text x="120" y="438" text-anchor="middle" font-size="9" fill="var(--accent)" font-family="var(--font-mono)">GenServer</text>
-
-    <rect x="200" y="406" width="120" height="42" rx="8" fill="var(--bg)" stroke="var(--accent)" stroke-width="0.5"/>
-    <text x="260" y="422" text-anchor="middle" font-size="11" font-weight="500" fill="var(--accent-fg)">Codex</text>
-    <text x="260" y="438" text-anchor="middle" font-size="9" fill="var(--accent)" font-family="var(--font-mono)">GenServer</text>
-
-    <rect x="360" y="406" width="120" height="42" rx="8" fill="var(--bg)" stroke="var(--accent)" stroke-width="0.5"/>
-    <text x="420" y="422" text-anchor="middle" font-size="11" font-weight="500" fill="var(--accent-fg)">Cursor</text>
-    <text x="420" y="438" text-anchor="middle" font-size="9" fill="var(--accent)" font-family="var(--font-mono)">GenServer</text>
-
-    <rect x="500" y="406" width="120" height="42" rx="8" fill="var(--bg)" stroke="var(--accent)" stroke-width="0.5"/>
-    <text x="560" y="422" text-anchor="middle" font-size="11" font-weight="500" fill="var(--accent-fg)">OpenCode</text>
-    <text x="560" y="438" text-anchor="middle" font-size="9" fill="var(--accent)" font-family="var(--font-mono)">GenServer</text>
-  </svg>
-</div>
-
-<table class="boundary-table">
-  <thead>
-    <tr><th>Concern</th><th>Owner</th><th></th></tr>
-  </thead>
-  <tbody>
-    <tr><td>Agent SDK access (Claude, Codex)</td><td>Node</td><td><span class="tag tag-node">stays</span></td></tr>
-    <tr><td>Canonical event types + contracts</td><td>Node (TypeScript)</td><td><span class="tag tag-node">stays</span></td></tr>
-    <tr><td>SQLite persistence</td><td>Node</td><td><span class="tag tag-node">stays</span></td></tr>
-    <tr><td>Browser / Electron WebSocket</td><td>Node</td><td><span class="tag tag-node">stays</span></td></tr>
-    <tr><td>Provider process supervision</td><td>Elixir (OTP)</td><td><span class="tag tag-otp">new</span></td></tr>
-    <tr><td>Crash isolation</td><td>Elixir (BEAM heaps)</td><td><span class="tag tag-otp">new</span></td></tr>
-    <tr><td>Per-session memory containment</td><td>Elixir (process heaps)</td><td><span class="tag tag-otp">new</span></td></tr>
-    <tr><td>Event normalization</td><td>Elixir</td><td><span class="tag tag-otp">new</span></td></tr>
-    <tr><td>Event projection + snapshot</td><td>Both</td><td><span class="tag tag-both">shared</span></td></tr>
-  </tbody>
-</table>
-
-<h2>The isolation argument</h2>
-
-<p>
-  When you run 4+ concurrent agent sessions — especially with subagents — the V8 shared heap becomes a liability.
-  One leaky or crashing session affects every other session sharing that process.
-  OTP's per-process heaps make this structurally impossible. Try it:
-</p>
-
-<div class="diagram-card">
-  <div class="diagram-label">Interactive · crash a session, see what happens</div>
-
-  <div class="mode-pills">
-    <button class="mpill active-node" id="btn-node" onclick="setMode('node')">Node — shared V8 heap</button>
-    <button class="mpill" id="btn-otp" onclick="setMode('otp')">OTP — per-process heaps</button>
-  </div>
-
-  <div class="sessions" id="sessions"></div>
-
-  <div id="shared-heap-area">
-    <div class="heap-bar"><div class="heap-fill heap-fill-ok" id="shared-fill" style="width:18%"></div></div>
-    <div class="heap-label" id="shared-label">Shared V8 heap — 48 MB</div>
-  </div>
-
-  <div id="per-heap-area" style="display:none">
-    <div class="per-heaps" id="per-heaps"></div>
-    <div class="heap-label">Independent BEAM process heaps</div>
-  </div>
-
-  <div class="controls">
-    <button class="crash-btn" id="crash-btn" onclick="crashSession()">Crash session 3</button>
-    <button class="reset-btn" onclick="resetAll()">Reset</button>
-  </div>
-  <div class="outcome" id="outcome"></div>
-</div>
-
-<h2>Stress test results</h2>
-
-<p>
-  8 test types, single-run results framed as architectural demonstrations — not statistical claims.
-  The structural properties (per-process heaps, supervision cleanup) are BEAM guarantees, not observations.
-</p>
-
-<div class="stats-row">
-  <div class="stat">
-    <div class="stat-val" style="color:var(--red)">2,800%</div>
-    <div class="stat-label">V8 heap growth with 1 leaky session (48→158 MB)</div>
-  </div>
-  <div class="stat">
-    <div class="stat-val" style="color:var(--green)">102%</div>
-    <div class="stat-label">BEAM memory with same leaky session</div>
-  </div>
-  <div class="stat">
-    <div class="stat-val" style="color:var(--amber)">169ms</div>
-    <div class="stat-label">Node p99 event loop lag during leak</div>
-  </div>
-  <div class="stat">
-    <div class="stat-val" style="color:var(--teal)">0</div>
-    <div class="stat-label">Sibling sessions affected in OTP</div>
-  </div>
-</div>
-
-<h3>The crossover point</h3>
-<p>
-  We scaled concurrent sessions from 5 to 200, all streaming simultaneously.
-  From 5 to 100, both runtimes are functionally identical — you would not be able to tell
-  them apart. At 150, Node's event loop lag creeps to 199ms. At 200, Node collapses:
-  latency jumps to 3.3 seconds, throughput <em>drops</em> (the event loop is so saturated
-  it processes fewer events, not more), and event loop lag hits 1.2 seconds.
-  Elixir at 200 sessions: 607ms latency, 18,000 events/sec, 0% scheduler utilization,
-  constant ~268KB per session.
-</p>
-<p>
-  This is the number that matters: if T3Code stays at 1–10 sessions, PR #581's
-  Node approach is simpler and sufficient. If it grows into a control plane with
-  concurrent subagent trees, the structural advantage materializes around 150 sessions
-  — and it's not gradual. It's a cliff.
-</p>
-
-<h3>Real workload: 10 subagents across 2 sessions</h3>
-<p>
-  Codex in plan mode spawned 10 real subagents. Node oscillated 1.8–54 MB on the shared heap.
-  Elixir held 54–63 MB flat while processing 14,918 events and 824 tool calls.
-  Both completed all work — the difference is in predictability under load.
-</p>
-
-<h3>Honest scorecard</h3>
-<p>
-  Elixir wins on isolation, observability, and per-session memory attribution.
-  Node wins on raw throughput and SDK ecosystem access.
-  Hence: two runtimes, each handling what it does best.
-</p>
-
-<h2>What adding a new provider costs</h2>
-
-<div class="stats-row">
-  <div class="stat">
-    <div class="stat-val">~3,000</div>
-    <div class="stat-label">LOC per new TypeScript adapter (current)</div>
-  </div>
-  <div class="stat">
-    <div class="stat-val" style="color:var(--accent)">500–700</div>
-    <div class="stat-label">LOC per new GenServer provider (OTP)</div>
-  </div>
-</div>
-
-<p>
-  Each new provider is a single GenServer module + a clause in <code>SessionManager.provider_module/1</code>.
-  No new TypeScript adapter. The centralized <code>HarnessService</code> contract means the Node side doesn't change at all.
-</p>
-
-<h2>Why subagents change the calculus</h2>
-
-<p>
-  If T3Code stayed a one-agent-at-a-time tool, I would not push hard for Elixir.
-  Subagents change the math. Imagine a future session:
-</p>
-
-<div class="callout" style="font-family:var(--font-mono);font-size:0.85rem;line-height:1.8;background:var(--bg2);border-color:var(--border2);color:var(--fg)">
-  Parent task<br>
-  &nbsp;&nbsp;→ Codex subagent for implementation<br>
-  &nbsp;&nbsp;→ OpenCode subagent for search<br>
-  &nbsp;&nbsp;→ Claude subagent for synthesis
-</div>
-
-<p>Now ask the annoying questions:</p>
-
-<p style="color:var(--fg2);font-style:italic;margin:0.5rem 0 0.5rem 1rem">
-  What happens if one subagent crashes mid-turn?<br>
-  What happens if one subagent is blocked on approval while another keeps streaming?<br>
-  What happens if the parent cancels and all children must stop cleanly?<br>
-  What happens if one child leaks memory or gets wedged on reconnect?
-</p>
-
-<p>
-  A Node-only architecture can answer all of them — but it answers them behaviorally:
-  careful process accounting, careful cleanup chains, careful shared-state discipline.
-  OTP answers them structurally: each subagent is a GenServer under a
-  <code>DynamicSupervisor</code>, parent crash cascades to children via process links,
-  one child's memory leak is contained to its own heap, and restart policies are
-  declarative, not imperative.
-</p>
-<p>
-  The more autonomous and unpredictable agents become, the stronger this argument
-  gets. "Start child, monitor child, restart child, stop subtree" stop being architecture
-  words. They become the product.
-</p>
-
-<h2>Honest tradeoffs</h2>
-
-<p>
-  <strong>BEAM runtime adds ~60–80 MB to the Electron bundle.</strong>
-  That's real. For a desktop app, it matters. The counter-argument is that with 4+ concurrent sessions running subagents, you're already in "supervise a tree of unstable runtimes" territory — and that's literally what OTP was designed for. But the bundle size cost is worth acknowledging upfront.
-</p>
-<p>
-  <strong>It's a second runtime to maintain.</strong>
-  The Elixir ecosystem is smaller than Node's. Hiring is harder. The mitigation is that the OTP layer is intentionally thin (total ~3,900 LOC across all modules) — it does one thing well and delegates everything else to Node.
-</p>
-<p>
-  <strong>The bridge WebSocket is an additional failure surface.</strong>
-  In the Node-only approach, events flow directly — no bridge, no extra hop.
-  With the harness, there's a Phoenix Channel between Elixir and Node. That adds ~1ms
-  of latency (invisible for most operations) but also a real failure mode: if the bridge
-  drops during a streaming turn, events are lost until reconnection. The WAL ring
-  buffer mitigates this with replay, but the failure mode does not exist in a single-runtime design.
-</p>
-<p>
-  <strong>Cross-runtime debugging is objectively harder.</strong>
-  When something fails in Node, you get a continuous stack trace. With the harness,
-  an error can start in Elixir (GenServer crash), manifest in Node (bridge disconnect),
-  and surface in the browser (events stop). Two log systems, two debuggers. This is
-  a cost that compounds over time if the boundary isn't sharp.
-</p>
-<p>
-  <strong>The Agent SDK constraint is real and permanent.</strong>
-  As long as Anthropic gates subscription-based Claude Code access through their Node SDK, Claude and Codex must route through Node. The OTP layer manages the provider process lifecycle, but the SDK call itself stays in the Node adapter. This is a feature, not a bug — it respects the ecosystem as it exists.
-</p>
-
-<hr>
-
-<div class="callout callout-teal">
-  This fork is offered as an architectural exploration, not a merge request. The goal is to
-  contribute to the discussion — and honestly, to learn from it. Theo has more experience
-  shipping Node + Electron at scale than most people writing about this topic. If this whole
-  OTP angle is an over-engineered solution to a problem that doesn't materialize in practice,
-  that's a genuinely useful answer. The worst outcome isn't "no" — it's building something
-  nobody pressure-tested with someone who actually knows the terrain.
-</div>
-
-<a class="repo-link" href="https://github.com/Ranvier-Technologies/t3code-OTP">
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-  View the fork on GitHub
-</a>
-
-<hr>
-
-<h2 style="color:var(--fg3);font-size:1.1rem">Addendum: failure scenario scorecard</h2>
-
-<p style="font-size:0.85rem;color:var(--fg2)">
-  We compared both approaches across ten concrete failure scenarios. Not benchmarks — failure
-  scenarios. Because the OTP argument is not about throughput. It's about what happens when
-  things go wrong.
-</p>
-
-<table class="boundary-table" style="font-size:0.8rem">
-  <thead>
-    <tr><th>#</th><th>Scenario</th><th>Node</th><th>Elixir</th><th></th></tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>1</td><td>Provider CLI hangs</td>
-      <td>Session stale, others unaffected</td>
-      <td>GenServer stale, others unaffected</td>
-      <td><span class="tag tag-both">tie</span></td>
-    </tr>
-    <tr>
-      <td>2</td><td>Provider CLI crashes</td>
-      <td><code>child.on("exit")</code> cleans up</td>
-      <td>Port exit handled, supervisor cleanup</td>
-      <td><span class="tag tag-both">tie</span></td>
-    </tr>
-    <tr>
-      <td>3</td><td>Memory leak in one session</td>
-      <td>Shared heap +145MB, lag +169ms p99</td>
-      <td>Leak bounded per-process (94–352KB)</td>
-      <td><span class="tag tag-otp">elixir</span></td>
-    </tr>
-    <tr>
-      <td>4</td><td>Unhandled exception</td>
-      <td>5/5 survivors continue</td>
-      <td>5/5 survivors continue</td>
-      <td><span class="tag tag-both">tie</span></td>
-    </tr>
-    <tr>
-      <td>5</td><td>50+ concurrent sessions</td>
-      <td>Degrades at ~150 (3.3s p99 at 200)</td>
-      <td>607ms at 200, 0% scheduler util</td>
-      <td><span class="tag tag-otp">elixir</span></td>
-    </tr>
-    <tr>
-      <td>6</td><td>Process spawn/teardown churn</td>
-      <td>OS handles it</td>
-      <td>Port + process links, similar</td>
-      <td><span class="tag tag-both">tie</span></td>
-    </tr>
-    <tr>
-      <td>7</td><td>Subagent trees</td>
-      <td>Manual parent-child tracking</td>
-      <td>DynamicSupervisor, process links</td>
-      <td><span class="tag tag-otp">elixir</span></td>
-    </tr>
-    <tr>
-      <td>8</td><td>Bridge WebSocket disconnect</td>
-      <td>Does not exist — events flow directly</td>
-      <td>Events lost until reconnection</td>
-      <td><span class="tag tag-node">node</span></td>
-    </tr>
-    <tr>
-      <td>9</td><td>Development complexity</td>
-      <td>One language, one debugger</td>
-      <td>Two languages, cross-runtime debugging</td>
-      <td><span class="tag tag-node">node</span></td>
-    </tr>
-    <tr>
-      <td>10</td><td>Desktop packaging</td>
-      <td>Electron bundles Node, zero extra cost</td>
-      <td>+50–100MB BEAM runtime</td>
-      <td><span class="tag tag-node">node</span></td>
-    </tr>
-  </tbody>
-</table>
-
-<p style="font-size:0.85rem;color:var(--fg2)">
-  <strong style="color:var(--fg)">Score: Elixir 3, Node 3, Tie 4.</strong>
-  But the scores are not equal in weight. Elixir's wins (3, 5, 7) are the ones that scale worst
-  if left unaddressed — memory coupling compounds over hours of use, event loop saturation
-  hits a cliff at ~150 sessions, and subagent cleanup chains grow with tree depth. Node's wins
-  (8, 9, 10) are present-tense shipping costs. Both are real. The question is which set of
-  problems you'd rather have.
-</p>
-
-<p style="font-size:0.85rem;color:var(--fg2)">
-  <strong style="color:var(--fg)">A note on the "careful application code" failure class.</strong>
-  These aren't hypothetical concerns — Macroscope's review of PR #581 itself found
-  concrete instances: adapter-emitted events pass through <code>#publish</code> without
-  re-sequencing, which can regress the global snapshot sequence and corrupt projections
-  across all sessions; <code>shutdownSession</code> aborts the event stream before the adapter
-  completes, potentially losing final <code>session.exited</code> events; and
-  <code>attachSession</code> never calls <code>#startStreaming</code>, leaving attached
-  sessions deaf to events. These are exactly the class of lifecycle gaps that OTP supervision
-  handles declaratively — not because the Node code is bad (it's early WIP and well-structured),
-  but because managing concurrent session lifecycles through application code requires getting
-  every edge case right manually. A supervisor doesn't have edge cases. It has a restart policy.
-</p>
-
-<p style="font-size:0.85rem;color:var(--fg2)">
-  For the full analysis with crossover benchmarks, methodology notes, and adversarial review:
-  <a href="https://ranvier-technologies.github.io/t3code-OTP/">complete writeup</a>.
-</p>
-
-<p class="footer">
-  Built by <a href="https://github.com/ranvier2d2">Bastian Venegas Arevalo</a> · CTO, <a href="https://ranvier-technologies.com">Ranvier Technologies</a><br>
-  Full analysis with benchmarks: <a href="https://ranvier-technologies.github.io/t3code-OTP/">complete writeup</a>
-  · Stress test methodology: <a href="https://github.com/Ranvier-Technologies/t3code-OTP/blob/main/output/stress-test/analysis.md">analysis.md</a>
-</p>
-
-</div>
-
-<script>
-var mode='node',crashed=false,timers=[];
-function buildSessions(){
-  var h='';for(var i=1;i<=5;i++){
-    h+='<div class="sess" id="s'+i+'"><div class="sess-label">S'+i+'</div><div class="sess-dot dot-ok" id="dot'+i+'"></div><div class="sess-status st-ok" id="st'+i+'">healthy</div></div>';
-  }document.getElementById('sessions').innerHTML=h;
-  var ph='';for(var i=1;i<=5;i++){
-    ph+='<div class="per-heap"><div class="heap-bar"><div class="heap-fill heap-fill-ok" id="ph'+i+'" style="width:20%"></div></div></div>';
-  }document.getElementById('per-heaps').innerHTML=ph;
-}
-buildSessions();
-
-function setMode(m){
-  mode=m;resetAll();
-  document.getElementById('btn-node').className=m==='node'?'mpill active-node':'mpill';
-  document.getElementById('btn-otp').className=m==='otp'?'mpill active-otp':'mpill';
-  document.getElementById('shared-heap-area').style.display=m==='node'?'block':'none';
-  document.getElementById('per-heap-area').style.display=m==='otp'?'block':'none';
-}
-
-function resetAll(){
-  crashed=false;timers.forEach(clearTimeout);timers=[];
-  document.getElementById('crash-btn').disabled=false;
-  document.getElementById('outcome').textContent='';
-  for(var i=1;i<=5;i++){
-    document.getElementById('dot'+i).className='sess-dot dot-ok';
-    document.getElementById('st'+i).className='sess-status st-ok';
-    document.getElementById('st'+i).textContent='healthy';
-    document.getElementById('s'+i).style.borderColor='';
-    if(mode==='otp'){var e=document.getElementById('ph'+i);if(e){e.style.width='20%';e.className='heap-fill heap-fill-ok';}}
-  }
-  document.getElementById('shared-fill').style.width='18%';
-  document.getElementById('shared-fill').className='heap-fill heap-fill-ok';
-  document.getElementById('shared-label').textContent='Shared V8 heap \u2014 48 MB';
-}
-
-function crashSession(){
-  if(crashed)return;crashed=true;
-  document.getElementById('crash-btn').disabled=true;
-  document.getElementById('dot3').className='sess-dot dot-crash';
-  document.getElementById('st3').className='sess-status st-crash';
-  document.getElementById('st3').textContent='crashed';
-  document.getElementById('s3').style.borderColor='var(--red)';
-
-  if(mode==='node'){
-    timers.push(setTimeout(function(){
-      document.getElementById('shared-fill').style.width='72%';
-      document.getElementById('shared-fill').className='heap-fill heap-fill-grow';
-      document.getElementById('shared-label').textContent='Shared V8 heap \u2014 158 MB (leaked)';
-    },400));
-    timers.push(setTimeout(function(){
-      [1,2,4,5].forEach(function(i){
-        document.getElementById('dot'+i).className='sess-dot dot-degraded';
-        document.getElementById('st'+i).className='sess-status st-degraded';
-        document.getElementById('st'+i).textContent='p99: 169ms';
-      });
-    },800));
-    timers.push(setTimeout(function(){
-      document.getElementById('outcome').innerHTML='Session 3 leaked into the shared heap. All sessions degraded \u2014 event loop lag affects every provider. No way to attribute memory to the leaky session.';
-    },1000));
-  } else {
-    var ph3=document.getElementById('ph3');
-    if(ph3){ph3.style.width='60%';ph3.className='heap-fill heap-fill-grow';}
-    timers.push(setTimeout(function(){
-      document.getElementById('dot3').className='sess-dot dot-restarted';
-      document.getElementById('st3').className='sess-status st-restarted';
-      document.getElementById('st3').textContent='restarted';
-      document.getElementById('s3').style.borderColor='';
-      if(ph3){ph3.style.width='20%';ph3.className='heap-fill heap-fill-ok';}
-    },1200));
-    timers.push(setTimeout(function(){
-      document.getElementById('outcome').innerHTML='Session 3 crashed in its own process. Supervisor restarted it \u2014 sessions 1, 2, 4, 5 never noticed. Memory reclaimed by per-process GC.';
-    },1400));
-  }
-}
-</script>
-</body>
+    <script>
+      var mode = "node",
+        crashed = false,
+        timers = [];
+      function buildSessions() {
+        var h = "";
+        for (var i = 1; i <= 5; i++) {
+          h +=
+            '<div class="sess" id="s' +
+            i +
+            '"><div class="sess-label">S' +
+            i +
+            '</div><div class="sess-dot dot-ok" id="dot' +
+            i +
+            '"></div><div class="sess-status st-ok" id="st' +
+            i +
+            '">healthy</div></div>';
+        }
+        document.getElementById("sessions").innerHTML = h;
+        var ph = "";
+        for (var i = 1; i <= 5; i++) {
+          ph +=
+            '<div class="per-heap"><div class="heap-bar"><div class="heap-fill heap-fill-ok" id="ph' +
+            i +
+            '" style="width:20%"></div></div></div>';
+        }
+        document.getElementById("per-heaps").innerHTML = ph;
+      }
+      buildSessions();
+
+      function setMode(m) {
+        mode = m;
+        resetAll();
+        document.getElementById("btn-node").className =
+          m === "node" ? "mpill active-node" : "mpill";
+        document.getElementById("btn-otp").className = m === "otp" ? "mpill active-otp" : "mpill";
+        document.getElementById("shared-heap-area").style.display = m === "node" ? "block" : "none";
+        document.getElementById("per-heap-area").style.display = m === "otp" ? "block" : "none";
+      }
+
+      function resetAll() {
+        crashed = false;
+        timers.forEach(clearTimeout);
+        timers = [];
+        document.getElementById("crash-btn").disabled = false;
+        document.getElementById("outcome").textContent = "";
+        for (var i = 1; i <= 5; i++) {
+          document.getElementById("dot" + i).className = "sess-dot dot-ok";
+          document.getElementById("st" + i).className = "sess-status st-ok";
+          document.getElementById("st" + i).textContent = "healthy";
+          document.getElementById("s" + i).style.borderColor = "";
+          if (mode === "otp") {
+            var e = document.getElementById("ph" + i);
+            if (e) {
+              e.style.width = "20%";
+              e.className = "heap-fill heap-fill-ok";
+            }
+          }
+        }
+        document.getElementById("shared-fill").style.width = "18%";
+        document.getElementById("shared-fill").className = "heap-fill heap-fill-ok";
+        document.getElementById("shared-label").textContent = "Shared V8 heap \u2014 48 MB";
+      }
+
+      function crashSession() {
+        if (crashed) return;
+        crashed = true;
+        document.getElementById("crash-btn").disabled = true;
+        document.getElementById("dot3").className = "sess-dot dot-crash";
+        document.getElementById("st3").className = "sess-status st-crash";
+        document.getElementById("st3").textContent = "crashed";
+        document.getElementById("s3").style.borderColor = "var(--red)";
+
+        if (mode === "node") {
+          timers.push(
+            setTimeout(function () {
+              document.getElementById("shared-fill").style.width = "72%";
+              document.getElementById("shared-fill").className = "heap-fill heap-fill-grow";
+              document.getElementById("shared-label").textContent =
+                "Shared V8 heap \u2014 158 MB (leaked)";
+            }, 400),
+          );
+          timers.push(
+            setTimeout(function () {
+              [1, 2, 4, 5].forEach(function (i) {
+                document.getElementById("dot" + i).className = "sess-dot dot-degraded";
+                document.getElementById("st" + i).className = "sess-status st-degraded";
+                document.getElementById("st" + i).textContent = "p99: 169ms";
+              });
+            }, 800),
+          );
+          timers.push(
+            setTimeout(function () {
+              document.getElementById("outcome").innerHTML =
+                "Session 3 leaked into the shared heap. All sessions degraded \u2014 event loop lag affects every provider. No way to attribute memory to the leaky session.";
+            }, 1000),
+          );
+        } else {
+          var ph3 = document.getElementById("ph3");
+          if (ph3) {
+            ph3.style.width = "60%";
+            ph3.className = "heap-fill heap-fill-grow";
+          }
+          timers.push(
+            setTimeout(function () {
+              document.getElementById("dot3").className = "sess-dot dot-restarted";
+              document.getElementById("st3").className = "sess-status st-restarted";
+              document.getElementById("st3").textContent = "restarted";
+              document.getElementById("s3").style.borderColor = "";
+              if (ph3) {
+                ph3.style.width = "20%";
+                ph3.className = "heap-fill heap-fill-ok";
+              }
+            }, 1200),
+          );
+          timers.push(
+            setTimeout(function () {
+              document.getElementById("outcome").innerHTML =
+                "Session 3 crashed in its own process. Supervisor restarted it \u2014 sessions 1, 2, 4, 5 never noticed. Memory reclaimed by per-process GC.";
+            }, 1400),
+          );
+        }
+      }
+    </script>
+  </body>
 </html>
