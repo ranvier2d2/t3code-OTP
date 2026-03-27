@@ -122,8 +122,15 @@ describe("ProviderCommandReactor", () => {
         typeof input.threadId === "string"
           ? ThreadId.makeUnsafe(input.threadId)
           : ThreadId.makeUnsafe(`thread-${sessionIndex}`);
+      const requestedProvider =
+        typeof input === "object" &&
+        input !== null &&
+        "provider" in input &&
+        typeof input.provider === "string"
+          ? (input.provider as ModelSelection["provider"])
+          : modelSelection.provider;
       const session: ProviderSession = {
-        provider: modelSelection.provider,
+        provider: requestedProvider,
         status: "ready" as const,
         runtimeMode:
           typeof input === "object" &&

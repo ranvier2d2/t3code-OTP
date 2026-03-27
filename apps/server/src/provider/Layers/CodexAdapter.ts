@@ -1108,6 +1108,22 @@ function mapToRuntimeEvents(
     ];
   }
 
+  if (event.method === "codex/event/plan_delta") {
+    const msg = codexEventMessage(payload);
+    const delta =
+      asString(msg?.delta) ?? asString(msg?.text) ?? asString(asObject(msg?.content)?.text);
+    if (!delta || delta.length === 0) {
+      return [];
+    }
+    return [
+      {
+        ...codexEventBase(event, canonicalThreadId),
+        type: "turn.proposed.delta",
+        payload: { delta },
+      },
+    ];
+  }
+
   if (event.method === "model/rerouted") {
     return [
       {
