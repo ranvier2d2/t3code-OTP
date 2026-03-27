@@ -21,9 +21,17 @@ export const ClaudeModelOptions = Schema.Struct({
 });
 export type ClaudeModelOptions = typeof ClaudeModelOptions.Type;
 
+export const CursorModelOptions = Schema.Struct({});
+export type CursorModelOptions = typeof CursorModelOptions.Type;
+
+export const OpenCodeModelOptions = Schema.Struct({});
+export type OpenCodeModelOptions = typeof OpenCodeModelOptions.Type;
+
 export const ProviderModelOptions = Schema.Struct({
   codex: Schema.optional(CodexModelOptions),
   claudeAgent: Schema.optional(ClaudeModelOptions),
+  cursor: Schema.optional(CursorModelOptions),
+  opencode: Schema.optional(OpenCodeModelOptions),
 });
 export type ProviderModelOptions = typeof ProviderModelOptions.Type;
 

@@ -301,12 +301,16 @@ function SettingsRouteView() {
         DEFAULT_UNIFIED_SETTINGS.providers.claudeAgent.binaryPath ||
       settings.providers.claudeAgent.customModels.length > 0,
     ),
+    cursor: Boolean(settings.providers.cursor.customModels.length > 0),
+    opencode: Boolean(settings.providers.opencode.customModels.length > 0),
   });
   const [customModelInputByProvider, setCustomModelInputByProvider] = useState<
     Record<ProviderKind, string>
   >({
     codex: "",
     claudeAgent: "",
+    cursor: "",
+    opencode: "",
   });
   const [customModelErrorByProvider, setCustomModelErrorByProvider] = useState<
     Partial<Record<ProviderKind, string | null>>
@@ -343,7 +347,8 @@ function SettingsRouteView() {
   const textGenerationModelSelection = resolveAppModelSelectionState(settings, serverProviders);
   const textGenProvider = textGenerationModelSelection.provider;
   const textGenModel = textGenerationModelSelection.model;
-  const textGenModelOptions = textGenerationModelSelection.options;
+  const textGenModelOptions =
+    "options" in textGenerationModelSelection ? textGenerationModelSelection.options : undefined;
   const gitModelOptionsByProvider = getCustomModelOptionsByProvider(
     settings,
     serverProviders,
@@ -514,7 +519,7 @@ function SettingsRouteView() {
         isCustom: true,
         capabilities: null,
       }));
-    const binaryPathValue = providerConfig.binaryPath;
+    const binaryPathValue = "binaryPath" in providerConfig ? providerConfig.binaryPath : undefined;
     const isDirty = !Equal.equals(providerConfig, defaultProviderConfig);
 
     return {
@@ -553,10 +558,14 @@ function SettingsRouteView() {
     setOpenProviderDetails({
       codex: false,
       claudeAgent: false,
+      cursor: false,
+      opencode: false,
     });
     setCustomModelInputByProvider({
       codex: "",
       claudeAgent: "",
+      cursor: "",
+      opencode: "",
     });
     setCustomModelErrorByProvider({});
   }

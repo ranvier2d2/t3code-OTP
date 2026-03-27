@@ -153,7 +153,11 @@ export function buildLegacyServerSettingsMigrationPatch(legacySettings: Record<s
   }
 
   if (Schema.is(ModelSelection)(legacySettings.textGenerationModelSelection)) {
-    patch.textGenerationModelSelection = legacySettings.textGenerationModelSelection;
+    const sel = legacySettings.textGenerationModelSelection;
+    // ServerSettingsPatch only accepts codex/claudeAgent model selections
+    if (sel.provider === "codex" || sel.provider === "claudeAgent") {
+      patch.textGenerationModelSelection = sel;
+    }
   }
 
   if (typeof legacySettings.codexBinaryPath === "string") {

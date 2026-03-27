@@ -270,7 +270,7 @@ export interface EffectiveComposerModelState {
 function providerModelOptionsFromSelection(
   modelSelection: ModelSelection | null | undefined,
 ): ProviderModelOptions | null {
-  if (!modelSelection?.options) {
+  if (!modelSelection || !("options" in modelSelection) || !modelSelection.options) {
     return null;
   }
 
@@ -285,7 +285,7 @@ function modelSelectionByProviderToOptions(
   if (!map) return null;
   const result: Record<string, unknown> = {};
   for (const [provider, selection] of Object.entries(map)) {
-    if (selection?.options) {
+    if (selection && "options" in selection && selection.options) {
       result[provider] = selection.options;
     }
   }
@@ -549,13 +549,14 @@ function legacyMergeModelSelectionIntoProviderModelOptions(
   modelSelection: ModelSelection | null,
   currentModelOptions: ProviderModelOptions | null | undefined,
 ): ProviderModelOptions | null {
-  if (modelSelection?.options === undefined) {
+  const opts = modelSelection && "options" in modelSelection ? modelSelection.options : undefined;
+  if (opts === undefined) {
     return normalizeProviderModelOptions(currentModelOptions);
   }
   return legacyReplaceProviderModelOptions(
     normalizeProviderModelOptions(currentModelOptions),
-    modelSelection.provider,
-    modelSelection.options,
+    modelSelection!.provider,
+    opts,
   );
 }
 
@@ -1623,15 +1624,17 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
           const nextMap = { ...base.modelSelectionByProvider };
           if (normalized) {
             const current = nextMap[normalized.provider];
-            if (normalized.options !== undefined) {
+            const normalizedOpts = "options" in normalized ? normalized.options : undefined;
+            if (normalizedOpts !== undefined) {
               // Explicit options provided → use them
               nextMap[normalized.provider] = normalized;
             } else {
               // No options in selection → preserve existing options, update provider+model
+              const currentOpts = current && "options" in current ? current.options : undefined;
               nextMap[normalized.provider] = {
                 provider: normalized.provider,
                 model: normalized.model,
-                ...(current?.options ? { options: current.options } : {}),
+                ...(currentOpts ? { options: currentOpts } : {}),
               };
             }
           }
@@ -1679,7 +1682,7 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
                 model: current?.model ?? getDefaultModel(provider),
                 options: opts,
               };
-            } else if (current?.options) {
+            } else if (current && "options" in current && current.options) {
               // Remove options but keep the selection
               const { options: _, ...rest } = current;
               nextMap[provider] = rest as ModelSelection;
@@ -1729,7 +1732,11 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
               model: currentForProvider?.model ?? getDefaultModel(normalizedProvider),
               options: providerOpts,
             };
-          } else if (currentForProvider?.options) {
+          } else if (
+            currentForProvider &&
+            "options" in currentForProvider &&
+            currentForProvider.options
+          ) {
             const { options: _, ...rest } = currentForProvider;
             nextMap[normalizedProvider] = rest as ModelSelection;
           }
@@ -1752,7 +1759,7 @@ export const useComposerDraftStore = create<ComposerDraftStoreState>()(
                 provider: normalizedProvider,
                 options: providerOpts,
               };
-            } else if (stickyBase.options) {
+            } else if ("options" in stickyBase && stickyBase.options) {
               const { options: _, ...rest } = stickyBase;
               nextStickyMap[normalizedProvider] = rest as ModelSelection;
             }

@@ -1014,8 +1014,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
       claudeAgent:
         providerStatuses.find((provider) => provider.provider === "claudeAgent")?.models ?? [],
       cursor: providerStatuses.find((provider) => provider.provider === "cursor")?.models ?? [],
-      opencode:
-        providerStatuses.find((provider) => provider.provider === "opencode")?.models ?? [],
+      opencode: providerStatuses.find((provider) => provider.provider === "opencode")?.models ?? [],
     }),
     [providerStatuses],
   );
@@ -1631,8 +1630,14 @@ export default function ChatView({ threadId }: ChatViewProps) {
         input.modelSelection !== undefined &&
         (input.modelSelection.model !== serverThread.modelSelection.model ||
           input.modelSelection.provider !== serverThread.modelSelection.provider ||
-          JSON.stringify(input.modelSelection.options ?? null) !==
-            JSON.stringify(serverThread.modelSelection.options ?? null))
+          JSON.stringify(
+            "options" in input.modelSelection ? (input.modelSelection.options ?? null) : null,
+          ) !==
+            JSON.stringify(
+              "options" in serverThread.modelSelection
+                ? (serverThread.modelSelection.options ?? null)
+                : null,
+            ))
       ) {
         await api.orchestration.dispatchCommand({
           type: "thread.meta.update",
@@ -2577,7 +2582,9 @@ export default function ChatView({ threadId }: ChatViewProps) {
           selectedModel ||
           activeProject.defaultModelSelection?.model ||
           DEFAULT_MODEL_BY_PROVIDER.codex,
-        ...(selectedModelSelection.options ? { options: selectedModelSelection.options } : {}),
+        ...("options" in selectedModelSelection && selectedModelSelection.options
+          ? { options: selectedModelSelection.options }
+          : {}),
       };
 
       if (isLocalDraftThread) {
