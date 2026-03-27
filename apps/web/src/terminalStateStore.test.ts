@@ -1,3 +1,30 @@
+// Bun's built-in localStorage stub lacks setItem/getItem/clear.
+// Must be installed before zustand persist middleware initializes at import time.
+import { vi } from "vitest";
+
+vi.hoisted(() => {
+  if (
+    typeof globalThis.localStorage === "undefined" ||
+    typeof globalThis.localStorage.setItem !== "function"
+  ) {
+    const store = new Map<string, string>();
+    Object.defineProperty(globalThis, "localStorage", {
+      value: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => store.set(key, value),
+        removeItem: (key: string) => store.delete(key),
+        clear: () => store.clear(),
+        get length() {
+          return store.size;
+        },
+        key: (index: number) => [...store.keys()][index] ?? null,
+      },
+      writable: true,
+      configurable: true,
+    });
+  }
+});
+
 import { ThreadId } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -7,9 +34,7 @@ const THREAD_ID = ThreadId.makeUnsafe("thread-1");
 
 describe("terminalStateStore actions", () => {
   beforeEach(() => {
-    if (typeof localStorage !== "undefined") {
-      localStorage.clear();
-    }
+    localStorage.clear();
     useTerminalStateStore.setState({ terminalStateByThreadId: {} });
   });
 

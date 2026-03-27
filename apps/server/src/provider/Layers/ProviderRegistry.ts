@@ -4,7 +4,7 @@
  * @module ProviderRegistryLive
  */
 import type { ProviderKind, ServerProvider, ServerProviderModel } from "@t3tools/contracts";
-import { Effect, Equal, Layer, PubSub, Ref, Result, Schedule, Stream } from "effect";
+import { Effect, Equal, Layer, Option, PubSub, Ref, Result, Schedule, Stream } from "effect";
 
 import { ClaudeProviderLive } from "./ClaudeProvider";
 import { CodexProviderLive } from "./CodexProvider";
@@ -64,7 +64,7 @@ export const ProviderRegistryLive = Layer.effect(
   Effect.gen(function* () {
     const codexProvider = yield* CodexProvider;
     const claudeProvider = yield* ClaudeProvider;
-    const harnessAdapter = yield* HarnessClientAdapter;
+    const harnessAdapterOption = yield* Effect.serviceOption(HarnessClientAdapter);
     const settingsService = yield* ServerSettingsService;
     const changesPubSub = yield* Effect.acquireRelease(
       PubSub.unbounded<ReadonlyArray<ServerProvider>>(),
@@ -72,34 +72,45 @@ export const ProviderRegistryLive = Layer.effect(
     );
 
     /** Query the harness for model lists and build snapshots for harness-routed providers. */
-    const loadHarnessProviders = Effect.gen(function* () {
-      const settings = yield* settingsService.getSettings.pipe(Effect.orElseSucceed(() => null));
-      const snapshots: ServerProvider[] = [];
-      for (const provider of HARNESS_PROVIDERS) {
-        const enabled = settings?.providers[provider]?.enabled ?? true;
-        const discoveredModels = yield* Effect.tryPromise({
-          try: () => harnessAdapter.listProviderModels(provider),
-          catch: (cause) => ({ _tag: "HarnessModelDiscoveryError" as const, provider, cause }),
-        }).pipe(Effect.result);
-        const reachable = Result.isSuccess(discoveredModels) && discoveredModels.success.length > 0;
-        const models: ReadonlyArray<{ slug: string; name: string }> = Result.isSuccess(
-          discoveredModels,
-        )
-          ? discoveredModels.success
-          : [];
-        // Merge custom models from settings
-        const customModels = settings?.providers[provider]?.customModels ?? [];
-        const seen = new Set(models.map((m) => m.slug));
-        const allModels = [
-          ...models,
-          ...customModels
-            .filter((slug: string) => !seen.has(slug))
-            .map((slug: string) => ({ slug, name: slug, isCustom: true as const })),
-        ];
-        snapshots.push(buildHarnessProviderSnapshot(provider, enabled, allModels, reachable));
-      }
-      return snapshots;
-    }).pipe(Effect.orElseSucceed(() => [] as ServerProvider[]));
+    const loadHarnessProviders = Option.match(harnessAdapterOption, {
+      onNone: () => Effect.succeed([] as ServerProvider[]),
+      onSome: (harnessAdapter) =>
+        Effect.gen(function* () {
+          const settings = yield* settingsService.getSettings.pipe(
+            Effect.orElseSucceed(() => null),
+          );
+          const snapshots: ServerProvider[] = [];
+          for (const provider of HARNESS_PROVIDERS) {
+            const enabled = settings?.providers[provider]?.enabled ?? true;
+            const discoveredModels = yield* Effect.tryPromise({
+              try: () => harnessAdapter.listProviderModels(provider),
+              catch: (cause) => ({
+                _tag: "HarnessModelDiscoveryError" as const,
+                provider,
+                cause,
+              }),
+            }).pipe(Effect.result);
+            const reachable =
+              Result.isSuccess(discoveredModels) && discoveredModels.success.length > 0;
+            const models: ReadonlyArray<{ slug: string; name: string }> = Result.isSuccess(
+              discoveredModels,
+            )
+              ? discoveredModels.success
+              : [];
+            // Merge custom models from settings
+            const customModels = settings?.providers[provider]?.customModels ?? [];
+            const seen = new Set(models.map((m) => m.slug));
+            const allModels = [
+              ...models,
+              ...customModels
+                .filter((slug: string) => !seen.has(slug))
+                .map((slug: string) => ({ slug, name: slug, isCustom: true as const })),
+            ];
+            snapshots.push(buildHarnessProviderSnapshot(provider, enabled, allModels, reachable));
+          }
+          return snapshots;
+        }).pipe(Effect.orElseSucceed(() => [] as ServerProvider[])),
+    });
 
     /** Load all providers (Node-discovered + harness-discovered). */
     const loadAllProviders = Effect.gen(function* () {
@@ -135,12 +146,14 @@ export const ProviderRegistryLive = Layer.effect(
     // Periodically refresh harness provider models (every 60s).
     // Harness providers don't have a change stream, so we poll.
     // Error handling is inside the repeated effect so one failure doesn't kill the schedule.
-    yield* syncProviders().pipe(
-      Effect.orElseSucceed(() => undefined as unknown),
-      Effect.delay("60 seconds"),
-      Effect.repeat(Schedule.spaced("60 seconds")),
-      Effect.forkScoped,
-    );
+    if (Option.isSome(harnessAdapterOption)) {
+      yield* syncProviders().pipe(
+        Effect.orElseSucceed(() => undefined as unknown),
+        Effect.delay("60 seconds"),
+        Effect.repeat(Schedule.spaced("60 seconds")),
+        Effect.forkScoped,
+      );
+    }
 
     return {
       getProviders: syncProviders({ publish: false }).pipe(
