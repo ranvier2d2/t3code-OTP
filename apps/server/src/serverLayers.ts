@@ -142,7 +142,7 @@ export function makeServerProviderLayer(): Layer.Layer<
           }),
         ).pipe(
           Layer.provide(claudeAdapterLayer),
-          Layer.provide(makeHarnessClientAdapterLive()),
+          Layer.provideMerge(makeHarnessClientAdapterLive()),
           Layer.provideMerge(providerSessionDirectoryLayer),
         )
       : ProviderAdapterRegistryLive.pipe(

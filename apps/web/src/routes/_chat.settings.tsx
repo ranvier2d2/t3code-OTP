@@ -80,11 +80,14 @@ const EMPTY_SERVER_PROVIDERS: ReadonlyArray<ServerProvider> = [];
 type InstallProviderSettings = {
   provider: ProviderKind;
   title: string;
-  binaryPlaceholder: string;
-  binaryDescription: ReactNode;
+  /** Omit for harness-routed providers (Cursor, OpenCode) that have no local binary. */
+  binaryPlaceholder?: string;
+  binaryDescription?: ReactNode;
   homePathKey?: "codexHomePath";
   homePlaceholder?: string;
   homeDescription?: ReactNode;
+  /** Short description shown when the provider has no live status from the Node server. */
+  harnessDescription?: string;
 };
 
 const PROVIDER_SETTINGS: readonly InstallProviderSettings[] = [
@@ -103,6 +106,16 @@ const PROVIDER_SETTINGS: readonly InstallProviderSettings[] = [
     binaryPlaceholder: "Claude binary path",
     binaryDescription: "Path to the Claude binary",
   },
+  {
+    provider: "cursor",
+    title: "Cursor",
+    harnessDescription: "Routed via Elixir harness",
+  },
+  {
+    provider: "opencode",
+    title: "OpenCode",
+    harnessDescription: "Routed via Elixir harness",
+  },
 ];
 
 const PROVIDER_STATUS_STYLES = {
@@ -120,6 +133,10 @@ const PROVIDER_STATUS_STYLES = {
   },
   warning: {
     dot: "bg-warning",
+    badge: "warning" as const,
+  },
+  checking: {
+    dot: "bg-muted-foreground animate-pulse",
     badge: "warning" as const,
   },
 } as const;
@@ -508,9 +525,20 @@ function SettingsRouteView() {
     );
     const providerConfig = settings.providers[providerSettings.provider];
     const defaultProviderConfig = DEFAULT_UNIFIED_SETTINGS.providers[providerSettings.provider];
-    const statusKey = liveProvider?.status ?? (providerConfig.enabled ? "warning" : "disabled");
-    const statusStyle = PROVIDER_STATUS_STYLES[statusKey];
-    const summary = getProviderSummary(liveProvider);
+    const isHarnessProvider = Boolean(providerSettings.harnessDescription);
+    const statusKey =
+      liveProvider?.status ??
+      (providerConfig.enabled ? (isHarnessProvider ? "checking" : "warning") : "disabled");
+    const statusStyle =
+      PROVIDER_STATUS_STYLES[statusKey as keyof typeof PROVIDER_STATUS_STYLES] ??
+      PROVIDER_STATUS_STYLES.warning;
+    const summary =
+      isHarnessProvider && !liveProvider
+        ? {
+            headline: "Connecting to harness…",
+            detail: providerSettings.harnessDescription!,
+          }
+        : getProviderSummary(liveProvider);
     const models: ReadonlyArray<ServerProviderModel> =
       liveProvider?.models ??
       providerConfig.customModels.map((slug) => ({
@@ -520,6 +548,7 @@ function SettingsRouteView() {
         capabilities: null,
       }));
     const binaryPathValue = "binaryPath" in providerConfig ? providerConfig.binaryPath : undefined;
+    const hasBinaryPath = Boolean(providerSettings.binaryPlaceholder);
     const isDirty = !Equal.equals(providerConfig, defaultProviderConfig);
 
     return {
@@ -531,6 +560,7 @@ function SettingsRouteView() {
       homePlaceholder: providerSettings.homePlaceholder,
       homeDescription: providerSettings.homeDescription,
       binaryPathValue,
+      hasBinaryPath,
       isDirty,
       liveProvider,
       models,
@@ -1065,38 +1095,40 @@ function SettingsRouteView() {
                     >
                       <CollapsibleContent>
                         <div className="space-y-0">
-                          {/* Binary path */}
-                          <div className="border-t border-border/60 px-4 py-3 sm:px-5">
-                            <label
-                              htmlFor={`provider-install-${providerCard.provider}-binary-path`}
-                              className="block"
-                            >
-                              <span className="text-xs font-medium text-foreground">
-                                {providerDisplayName} binary path
-                              </span>
-                              <Input
-                                id={`provider-install-${providerCard.provider}-binary-path`}
-                                className="mt-1.5"
-                                value={providerCard.binaryPathValue}
-                                onChange={(event) =>
-                                  updateSettings({
-                                    providers: {
-                                      ...settings.providers,
-                                      [providerCard.provider]: {
-                                        ...settings.providers[providerCard.provider],
-                                        binaryPath: event.target.value,
+                          {/* Binary path (only for providers with a local binary) */}
+                          {providerCard.hasBinaryPath ? (
+                            <div className="border-t border-border/60 px-4 py-3 sm:px-5">
+                              <label
+                                htmlFor={`provider-install-${providerCard.provider}-binary-path`}
+                                className="block"
+                              >
+                                <span className="text-xs font-medium text-foreground">
+                                  {providerDisplayName} binary path
+                                </span>
+                                <Input
+                                  id={`provider-install-${providerCard.provider}-binary-path`}
+                                  className="mt-1.5"
+                                  value={providerCard.binaryPathValue}
+                                  onChange={(event) =>
+                                    updateSettings({
+                                      providers: {
+                                        ...settings.providers,
+                                        [providerCard.provider]: {
+                                          ...settings.providers[providerCard.provider],
+                                          binaryPath: event.target.value,
+                                        },
                                       },
-                                    },
-                                  })
-                                }
-                                placeholder={providerCard.binaryPlaceholder}
-                                spellCheck={false}
-                              />
-                              <span className="mt-1 block text-xs text-muted-foreground">
-                                {providerCard.binaryDescription}
-                              </span>
-                            </label>
-                          </div>
+                                    })
+                                  }
+                                  placeholder={providerCard.binaryPlaceholder}
+                                  spellCheck={false}
+                                />
+                                <span className="mt-1 block text-xs text-muted-foreground">
+                                  {providerCard.binaryDescription}
+                                </span>
+                              </label>
+                            </div>
+                          ) : null}
 
                           {/* Home path (Codex only) */}
                           {providerCard.homePathKey ? (

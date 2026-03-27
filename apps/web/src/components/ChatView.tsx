@@ -1008,16 +1008,23 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const branchesQuery = useQuery(gitBranchesQueryOptions(gitCwd));
   const keybindings = serverConfigQuery.data?.keybindings ?? EMPTY_KEYBINDINGS;
   const availableEditors = serverConfigQuery.data?.availableEditors ?? EMPTY_AVAILABLE_EDITORS;
-  const modelOptionsByProvider = useMemo(
-    () => ({
-      codex: providerStatuses.find((provider) => provider.provider === "codex")?.models ?? [],
-      claudeAgent:
-        providerStatuses.find((provider) => provider.provider === "claudeAgent")?.models ?? [],
-      cursor: providerStatuses.find((provider) => provider.provider === "cursor")?.models ?? [],
-      opencode: providerStatuses.find((provider) => provider.provider === "opencode")?.models ?? [],
-    }),
-    [providerStatuses],
-  );
+  const modelOptionsByProvider = useMemo(() => {
+    const discovered = (p: ProviderKind) =>
+      providerStatuses.find((s) => s.provider === p)?.models ?? [];
+    const custom = (p: ProviderKind) => {
+      const slugs = settings.providers[p]?.customModels ?? [];
+      const seen = new Set(discovered(p).map((m) => m.slug));
+      return slugs
+        .filter((s: string) => !seen.has(s))
+        .map((s: string) => ({ slug: s, name: s, isCustom: true as const }));
+    };
+    return {
+      codex: [...discovered("codex"), ...custom("codex")],
+      claudeAgent: [...discovered("claudeAgent"), ...custom("claudeAgent")],
+      cursor: [...discovered("cursor"), ...custom("cursor")],
+      opencode: [...discovered("opencode"), ...custom("opencode")],
+    };
+  }, [providerStatuses, settings]);
   const selectedModelForPickerWithCustomFallback = useMemo(() => {
     const currentOptions = modelOptionsByProvider[selectedProvider] ?? [];
     return currentOptions.some((option) => option.slug === selectedModelForPicker)
