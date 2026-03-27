@@ -32,6 +32,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# ─── Raise FD limit for concurrent provider sessions ──────────────
+# Each Erlang Port (provider session) uses ~3 FDs (stdin/stdout/stderr).
+# macOS launchd soft limit is 256 — too low for 100+ sessions.
+ulimit -n 10240 2>/dev/null || true
+
 # ─── Kill stale processes ──────────────────────────────────────────
 log "Killing stale processes on ports $PORT_HARNESS, $PORT_SERVER, $PORT_VITE..."
 kill $(lsof -ti:$PORT_HARNESS) 2>/dev/null || true
