@@ -11,7 +11,18 @@ import {
   type RuntimeMode,
   type TurnId,
 } from "@t3tools/contracts";
-import { Cache, Cause, Duration, Effect, Equal, Layer, Option, Schema, Semaphore, Stream } from "effect";
+import {
+  Cache,
+  Cause,
+  Duration,
+  Effect,
+  Equal,
+  Layer,
+  Option,
+  Schema,
+  Semaphore,
+  Stream,
+} from "effect";
 import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 
 import { resolveThreadWorkspaceCwd } from "../../checkpointing/Utils.ts";
@@ -669,19 +680,17 @@ const make = Effect.gen(function* () {
         // Run stop as uninterruptible with a 15s timeout. If the provider
         // hangs (e.g., stuck GenServer), we proceed to mark the session
         // stopped rather than blocking the reactor worker indefinitely.
-        yield* providerService
-          .stopSession({ threadId: thread.id })
-          .pipe(
-            Effect.timeout(Duration.seconds(15)),
-            Effect.uninterruptible,
-            Effect.tapError((error) =>
-              Effect.logWarning("stopSession timed out or failed", {
-                threadId: thread.id,
-                error: String(error),
-              }),
-            ),
-            Effect.ignore,
-          );
+        yield* providerService.stopSession({ threadId: thread.id }).pipe(
+          Effect.timeout(Duration.seconds(15)),
+          Effect.uninterruptible,
+          Effect.tapError((error) =>
+            Effect.logWarning("stopSession timed out or failed", {
+              threadId: thread.id,
+              error: String(error),
+            }),
+          ),
+          Effect.ignore,
+        );
       }
 
       yield* setThreadSession({
@@ -737,7 +746,10 @@ const make = Effect.gen(function* () {
     });
 
   const processDomainEventSafely = (event: ProviderIntentEvent) =>
-    threadMutex.withPermits(event.payload.threadId, 1)(
+    threadMutex.withPermits(
+      event.payload.threadId,
+      1,
+    )(
       processDomainEvent(event).pipe(
         Effect.catchCause((cause) => {
           if (Cause.hasInterruptsOnly(cause)) {
