@@ -18,6 +18,10 @@ import type { ProviderAdapterShape } from "./ProviderAdapter.ts";
  */
 export interface HarnessClientAdapterShape extends ProviderAdapterShape<ProviderAdapterError> {
   readonly provider: "codex";
+  /** Query the Elixir harness for available models for a harness-routed provider. */
+  readonly listProviderModels: (
+    provider: string,
+  ) => Promise<ReadonlyArray<{ slug: string; name: string }>>;
 }
 
 /**

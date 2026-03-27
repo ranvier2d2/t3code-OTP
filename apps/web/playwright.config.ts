@@ -9,7 +9,7 @@ export default defineConfig({
   reporter: process.env.CI ? "github" : "list",
   outputDir: "./e2e-results",
   use: {
-    baseURL: `http://localhost:${process.env.PORT ?? 5733}`,
+    baseURL: `http://localhost:${process.env.PORT ?? 5734}`,
     trace: "on",
     video: "on",
     screenshot: "on",

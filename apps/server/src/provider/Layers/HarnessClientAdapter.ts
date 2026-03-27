@@ -1234,6 +1234,7 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
         readThread,
         rollbackThread,
         stopAll,
+        listProviderModels: (provider: string) => manager.listProviderModels(provider),
         streamEvents: Stream.fromQueue(runtimeEventQueue),
       } satisfies HarnessClientAdapterShape;
     }),
