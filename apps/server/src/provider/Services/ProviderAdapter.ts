@@ -30,6 +30,12 @@ export interface ProviderAdapterCapabilities {
    * Declares whether changing the model on an existing session is supported.
    */
   readonly sessionModelSwitch: ProviderSessionModelSwitchMode;
+  /** Whether this provider supports user-input requests (tool_user_input). */
+  readonly supportsUserInput: boolean;
+  /** Whether this provider supports thread rollback. */
+  readonly supportsRollback: boolean;
+  /** Whether this provider supports file-change approval requests. */
+  readonly supportsFileChangeApproval: boolean;
 }
 
 export interface ProviderThreadTurnSnapshot {

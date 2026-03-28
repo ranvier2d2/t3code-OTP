@@ -179,6 +179,9 @@ function makeFakeCodexAdapter(provider: ProviderKind = "codex") {
     provider,
     capabilities: {
       sessionModelSwitch: "in-session",
+      supportsUserInput: true,
+      supportsRollback: true,
+      supportsFileChangeApproval: true,
     },
     startSession,
     sendTurn,

@@ -140,5 +140,11 @@ export function resolveElectronPath() {
     return electronBinaryPath;
   }
 
+  // Skip custom launcher when T3CODE_SKIP_LAUNCHER is set — the cpSync
+  // misses ICU data (icudtl.dat) causing GPU process crashes.
+  if ("T3CODE_SKIP_LAUNCHER" in process.env) {
+    return electronBinaryPath;
+  }
+
   return buildMacLauncher(electronBinaryPath);
 }

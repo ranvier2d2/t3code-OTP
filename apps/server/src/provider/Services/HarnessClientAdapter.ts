@@ -17,11 +17,11 @@ import type { ProviderAdapterShape } from "./ProviderAdapter.ts";
  * HarnessClientAdapterShape — Service API for the Elixir harness bridge adapter.
  */
 export interface HarnessClientAdapterShape extends ProviderAdapterShape<ProviderAdapterError> {
-  readonly provider: "codex";
-  /** Query the Elixir harness for available models for a harness-routed provider. */
-  readonly listProviderModels: (
+  readonly provider: "codex" | "cursor" | "opencode";
+  /** Query the harness for available models for a given provider. */
+  readonly listModels: (
     provider: string,
-  ) => Promise<ReadonlyArray<{ slug: string; name: string }>>;
+  ) => import("effect").Effect.Effect<ReadonlyArray<{ slug: string; name: string }>>;
 }
 
 /**

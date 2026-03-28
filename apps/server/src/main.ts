@@ -20,9 +20,13 @@ import {
 import { fixPath, resolveBaseDir } from "./os-jank";
 import { Open } from "./open";
 import * as SqlitePersistence from "./persistence/Layers/Sqlite";
-import { makeServerProviderLayer, makeServerRuntimeServicesLayer } from "./serverLayers";
+import {
+  makeServerProviderLayer,
+  makeServerRuntimeServicesLayer,
+  makeProviderRegistryLayer,
+} from "./serverLayers";
+import { makeHarnessClientAdapterLive } from "./provider/Layers/HarnessClientAdapter";
 import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery";
-import { ProviderRegistryLive } from "./provider/Layers/ProviderRegistry";
 import { Server } from "./wsServer";
 import { ServerLoggerLive } from "./serverLogger";
 import { AnalyticsServiceLayerLive } from "./telemetry/Layers/AnalyticsService";
@@ -47,6 +51,8 @@ const BootstrapEnvelopeSchema = Schema.Struct({
   authToken: Schema.optional(Schema.String),
   autoBootstrapProjectFromCwd: Schema.optional(Schema.Boolean),
   logWebSocketEvents: Schema.optional(Schema.Boolean),
+  harnessPort: Schema.optional(PortSchema),
+  harnessSecret: Schema.optional(Schema.String),
 });
 
 interface CliInput {
@@ -279,6 +285,23 @@ const ServerConfigLive = (input: CliInput) =>
         () => (mode === "desktop" ? "127.0.0.1" : undefined),
       );
 
+      const harnessPort = Option.getOrUndefined(
+        resolveOptionPrecedence(
+          Option.fromUndefinedOr(env.harnessPort),
+          Option.flatMap(bootstrapEnvelope, (bootstrap) =>
+            Option.filter(Option.fromUndefinedOr(bootstrap.harnessPort), isValidPort),
+          ),
+        ),
+      );
+      const harnessSecret = Option.getOrUndefined(
+        resolveOptionPrecedence(
+          Option.fromUndefinedOr(env.harnessSecret),
+          Option.flatMap(bootstrapEnvelope, (bootstrap) =>
+            Option.fromUndefinedOr(bootstrap.harnessSecret),
+          ),
+        ),
+      );
+
       const config: ServerConfigShape = {
         mode,
         port,
@@ -292,8 +315,8 @@ const ServerConfigLive = (input: CliInput) =>
         authToken: Option.getOrUndefined(authToken),
         autoBootstrapProjectFromCwd,
         logWebSocketEvents,
-        harnessPort: env.harnessPort,
-        harnessSecret: env.harnessSecret,
+        harnessPort,
+        harnessSecret,
       } satisfies ServerConfigShape;
 
       return config;
@@ -301,10 +324,13 @@ const ServerConfigLive = (input: CliInput) =>
   );
 
 const LayerLive = (input: CliInput) => {
+  // Single shared harness adapter — prevents duplicate WebSocket connections
+  // when both ProviderService and ProviderRegistry need harness access.
+  const sharedHarnessAdapter = makeHarnessClientAdapterLive();
   return Layer.empty.pipe(
     Layer.provideMerge(makeServerRuntimeServicesLayer()),
-    Layer.provideMerge(makeServerProviderLayer()),
-    Layer.provideMerge(ProviderRegistryLive),
+    Layer.provideMerge(makeServerProviderLayer({ harnessAdapterLayer: sharedHarnessAdapter })),
+    Layer.provideMerge(makeProviderRegistryLayer({ harnessAdapterLayer: sharedHarnessAdapter })),
     Layer.provideMerge(SqlitePersistence.layerConfig),
     Layer.provideMerge(ServerLoggerLive),
     Layer.provideMerge(AnalyticsServiceLayerLive),

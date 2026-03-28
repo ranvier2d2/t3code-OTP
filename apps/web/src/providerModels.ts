@@ -1,8 +1,10 @@
 import {
   DEFAULT_MODEL_BY_PROVIDER,
+  DEFAULT_PROVIDER_CAPABILITIES,
   type ClaudeModelOptions,
   type CodexModelOptions,
   type ModelCapabilities,
+  type ProviderCapabilities,
   type ProviderKind,
   type ServerProvider,
   type ServerProviderModel,
@@ -33,6 +35,16 @@ export function getProviderSnapshot(
   provider: ProviderKind,
 ): ServerProvider | undefined {
   return providers.find((candidate) => candidate.provider === provider);
+}
+
+export function getProviderCapabilities(
+  providers: ReadonlyArray<ServerProvider>,
+  provider: ProviderKind,
+): ProviderCapabilities {
+  return (
+    getProviderSnapshot(providers, provider)?.capabilities ??
+    DEFAULT_PROVIDER_CAPABILITIES[provider]
+  );
 }
 
 export function isProviderEnabled(

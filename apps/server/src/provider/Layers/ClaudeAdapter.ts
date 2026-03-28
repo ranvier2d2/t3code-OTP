@@ -3109,6 +3109,9 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
       provider: PROVIDER,
       capabilities: {
         sessionModelSwitch: "in-session",
+        supportsUserInput: true,
+        supportsRollback: true,
+        supportsFileChangeApproval: true,
       },
       startSession,
       sendTurn,

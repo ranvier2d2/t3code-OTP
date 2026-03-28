@@ -285,6 +285,21 @@ Those are not theoretical findings. They are the kind of things you only learn b
 
 The harness includes a CLI (`bin/harness`) that can start all four providers, run a dry-run across them, query the live snapshot, and manage sessions — a full local control plane in a single command.
 
+### Concurrent session ramp — the OOM challenge
+
+We built a geometric session ramp test that scales real provider sessions from 4 to 200 through the Elixir harness, with each turn requiring actual tool usage (bash commands). On an 8GB MacBook Air, the system cleanly sustained 35 concurrent sessions (7 per provider × 4 providers + 7 mock control) with 100% completion rate and zero errors.
+
+| Step | Sessions | Completed | p50   | p99   | BEAM Memory | SnapshotServer Queue |
+| ---- | -------- | --------- | ----- | ----- | ----------- | -------------------- |
+| 1    | 5        | 5 (100%)  | 11.5s | 12.3s | 52→57MB     | 0                    |
+| 2    | 25       | 25 (100%) | 4.0s  | 25.3s | 56→69MB     | 74                   |
+| 3    | 35       | 35 (100%) | 13.3s | 39.3s | 62→81MB     | 790                  |
+| 4    | 50       | skipped   | —     | —     | —           | (memory guard)       |
+
+A key discovery: **Codex is the natural infrastructure canary.** Its single long-lived `codex app-server` process maintains stable p50 latency (2-8s) across all concurrency levels, while Claude and Cursor vary 4x between runs (25-100s) due to CLI spawn overhead. When Codex degrades, it signals harness saturation — not provider slowness. We replaced our initial p99 latency stop condition (which incorrectly measured provider TTFT, not harness health) with BEAM telemetry-based signals: SnapshotServer queue depth, Codex degradation ratio (`current_p50 / baseline_p50` — a ratio >2.0 indicates infrastructure saturation rather than provider slowness, computed from Codex service response times since its long-lived process eliminates spawn overhead as a variable), infrastructure error detection (`:emfile`), and memory growth.
+
+The 35-session ceiling is hardware-limited (8GB RAM), not BEAM-limited. BEAM memory per session is negligible (~268KB), but each provider CLI process consumes ~150-200MB of out-of-BEAM OS memory (Node/Python runtimes, model context buffers), so 35 sessions × ~200MB saturates the 8GB machine. BEAM scheduler utilization was 0.76% at peak — the runtime has enormous headroom. On a 32GB machine, the architectural ceiling would be the SnapshotServer throughput, not memory.
+
 ### Tool use — not just "say hello"
 
 The providers do not just answer text prompts. They execute tools through the harness in full-access mode:
@@ -619,18 +634,18 @@ T3Code sits at an interesting intersection: it already orchestrates across provi
 
 After building both approaches, I compared them across ten concrete failure scenarios. Not benchmarks — failure scenarios. Because the OTP argument is not about throughput. It is about what happens when things go wrong.
 
-| #   | Scenario                         | Node (main)                                     | Elixir (harness)                                     | Winner  | Tested?                        |
-| --- | -------------------------------- | ----------------------------------------------- | ---------------------------------------------------- | ------- | ------------------------------ |
-| 1   | Provider CLI hangs               | Session context stale, others unaffected        | GenServer stale, others unaffected                   | Tie     | —                              |
-| 2   | Provider CLI crashes             | `child.on("exit")` cleans up, others continue   | Port exit handled, others continue                   | Tie     | **Yes** — crash isolation test |
-| 3   | Memory leak in one session       | Leak grows shared heap (+145MB), lag +169ms p99 | Leak bounded per-process (94-352KB), others flat     | Elixir  | **Yes** — memory leak test     |
-| 4   | Unhandled exception in callback  | 5/5 survivors continue (child process crash)    | 5/5 survivors continue (GenServer cleanup)           | Tie\*   | **Yes** — exception injection  |
-| 5   | 50 concurrent sessions streaming | 50/50 complete, 6293 ev/s, lag p99=61ms         | 50/50 complete, 6766 ev/s, sched 2.9%                | Tie\*\* | **Yes** — scale50 test         |
-| 6   | Process spawn/teardown churn     | OS handles it                                   | Port + process links, similar overhead               | Tie     | —                              |
-| 7   | Subagent trees (future)          | Manual parent-child tracking, cleanup chains    | DynamicSupervisor, process links, tree stop          | Elixir  | **Yes** — subagent test        |
-| 8   | Bridge WebSocket disconnects     | **Does not exist** — events flow directly       | Events lost until reconnection                       | Node    | —                              |
-| 9   | Development complexity           | One language, one debugger, one stack trace     | Two languages, two runtimes, cross-runtime debugging | Node    | —                              |
-| 10  | Desktop packaging                | Electron bundles Node, zero additional cost     | +50-100MB BEAM runtime, lifecycle management         | Node    | —                              |
+| #   | Scenario                         | Node (main)                                     | Elixir (harness)                                     | Winner     | Tested?                        |
+| --- | -------------------------------- | ----------------------------------------------- | ---------------------------------------------------- | ---------- | ------------------------------ |
+| 1   | Provider CLI hangs               | Session context stale, others unaffected        | GenServer stale, others unaffected                   | Tie        | —                              |
+| 2   | Provider CLI crashes             | `child.on("exit")` cleans up, others continue   | Port exit handled, others continue                   | Tie        | **Yes** — crash isolation test |
+| 3   | Memory leak in one session       | Leak grows shared heap (+145MB), lag +169ms p99 | Leak bounded per-process (94-352KB), others flat     | Elixir     | **Yes** — memory leak test     |
+| 4   | Unhandled exception in callback  | 5/5 survivors continue (child process crash)    | 5/5 survivors continue (GenServer cleanup)           | Tie\*      | **Yes** — exception injection  |
+| 5   | 50 concurrent sessions streaming | 50/50 complete, 6293 ev/s, lag p99=61ms         | 50/50 complete, 6766 ev/s, sched 2.9%                | Elixir\*\* | **Yes** — scale50 + OOM ramp   |
+| 6   | Process spawn/teardown churn     | OS handles it                                   | Port + process links, similar overhead               | Tie        | —                              |
+| 7   | Subagent trees (future)          | Manual parent-child tracking, cleanup chains    | DynamicSupervisor, process links, tree stop          | Elixir     | **Yes** — subagent test        |
+| 8   | Bridge WebSocket disconnects     | **Does not exist** — events flow directly       | Events lost until reconnection                       | Node       | —                              |
+| 9   | Development complexity           | One language, one debugger, one stack trace     | Two languages, two runtimes, cross-runtime debugging | Node       | —                              |
+| 10  | Desktop packaging                | Electron bundles Node, zero additional cost     | +50-100MB BEAM runtime, lifecycle management         | Node       | —                              |
 
 \*Scenario 4 revised from "Elixir" to "Tie" after testing: both runtimes isolate child process crashes equally well. Elixir's advantage is automatic DynamicSupervisor cleanup vs manual Map cleanup, not survival.
 

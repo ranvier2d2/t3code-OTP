@@ -13,7 +13,12 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 
 const fakeCodexAdapter: CodexAdapterShape = {
   provider: "codex",
-  capabilities: { sessionModelSwitch: "in-session" },
+  capabilities: {
+    sessionModelSwitch: "in-session",
+    supportsUserInput: true,
+    supportsRollback: true,
+    supportsFileChangeApproval: true,
+  },
   startSession: vi.fn(),
   sendTurn: vi.fn(),
   interruptTurn: vi.fn(),
@@ -30,7 +35,12 @@ const fakeCodexAdapter: CodexAdapterShape = {
 
 const fakeClaudeAdapter: ClaudeAdapterShape = {
   provider: "claudeAgent",
-  capabilities: { sessionModelSwitch: "in-session" },
+  capabilities: {
+    sessionModelSwitch: "in-session",
+    supportsUserInput: true,
+    supportsRollback: true,
+    supportsFileChangeApproval: true,
+  },
   startSession: vi.fn(),
   sendTurn: vi.fn(),
   interruptTurn: vi.fn(),

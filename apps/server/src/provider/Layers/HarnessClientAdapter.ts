@@ -58,6 +58,31 @@ import { mapToRuntimeEvents as codexMapToRuntimeEvents } from "./codexEventMappi
 // for error context when the provider is not known from the request.
 const DEFAULT_PROVIDER = "codex" as const;
 
+/** Per-provider capabilities for harness-backed providers. */
+export const HARNESS_PROVIDER_CAPABILITIES: Record<
+  string,
+  import("../Services/ProviderAdapter.ts").ProviderAdapterCapabilities
+> = {
+  codex: {
+    sessionModelSwitch: "restart-session",
+    supportsUserInput: true,
+    supportsRollback: true,
+    supportsFileChangeApproval: true,
+  },
+  cursor: {
+    sessionModelSwitch: "restart-session",
+    supportsUserInput: false,
+    supportsRollback: false,
+    supportsFileChangeApproval: false,
+  },
+  opencode: {
+    sessionModelSwitch: "restart-session",
+    supportsUserInput: true,
+    supportsRollback: true,
+    supportsFileChangeApproval: true,
+  },
+};
+
 /** Default port the Elixir harness Phoenix app listens on. */
 const DEFAULT_HARNESS_PORT = 4321;
 
@@ -115,6 +140,7 @@ function toMessage(cause: unknown, fallback: string): string {
 }
 
 function toSessionError(
+  provider: string,
   threadId: ThreadId,
   cause: unknown,
 ): ProviderAdapterSessionNotFoundError | ProviderAdapterSessionClosedError | undefined {
@@ -125,14 +151,14 @@ function toSessionError(
     normalized.includes("session not found")
   ) {
     return new ProviderAdapterSessionNotFoundError({
-      provider: DEFAULT_PROVIDER,
+      provider,
       threadId,
       cause,
     });
   }
   if (normalized.includes("session is closed")) {
     return new ProviderAdapterSessionClosedError({
-      provider: DEFAULT_PROVIDER,
+      provider,
       threadId,
       cause,
     });
@@ -140,13 +166,18 @@ function toSessionError(
   return undefined;
 }
 
-function toRequestError(threadId: ThreadId, method: string, cause: unknown): ProviderAdapterError {
-  const sessionError = toSessionError(threadId, cause);
+function toRequestError(
+  provider: string,
+  threadId: ThreadId,
+  method: string,
+  cause: unknown,
+): ProviderAdapterError {
+  const sessionError = toSessionError(provider, threadId, cause);
   if (sessionError) {
     return sessionError;
   }
   return new ProviderAdapterRequestError({
-    provider: DEFAULT_PROVIDER,
+    provider,
     method,
     detail: toMessage(cause, `${method} failed`),
     cause,
@@ -347,9 +378,7 @@ function runtimeEventBase(
     ...(refs ? { providerRefs: refs } : {}),
     raw: {
       source:
-        event.kind === "request"
-          ? ("codex.app-server.request" as const)
-          : ("codex.app-server.notification" as const),
+        event.kind === "request" ? ("harness.request" as const) : ("harness.notification" as const),
       method: event.method,
       payload: event.payload ?? {},
     },
@@ -1051,17 +1080,26 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
       );
 
       // -------------------------------------------------------------------
+      // Session → provider tracking (for error context)
+      // -------------------------------------------------------------------
+
+      const sessionProviderMap = new Map<string, string>();
+      const resolveProvider = (threadId: ThreadId): string =>
+        sessionProviderMap.get(threadId) ?? DEFAULT_PROVIDER;
+
+      // -------------------------------------------------------------------
       // Adapter method implementations
       // -------------------------------------------------------------------
 
       const startSession: HarnessClientAdapterShape["startSession"] = (input) => {
         // The harness adapter handles all providers — routing happens in Elixir.
+        const provider = input.provider ?? DEFAULT_PROVIDER;
 
         return Effect.tryPromise({
           try: () =>
             manager.startSession({
               threadId: input.threadId,
-              provider: input.provider ?? DEFAULT_PROVIDER,
+              provider,
               ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
               ...(input.modelSelection?.model !== undefined
                 ? { model: input.modelSelection.model }
@@ -1071,7 +1109,7 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
             }),
           catch: (cause) =>
             new ProviderAdapterProcessError({
-              provider: DEFAULT_PROVIDER,
+              provider,
               threadId: input.threadId,
               detail: toMessage(cause, "Failed to start harness session."),
               cause,
@@ -1079,6 +1117,7 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
         }).pipe(
           Effect.tap(() =>
             Effect.sync(() => {
+              sessionProviderMap.set(input.threadId, provider);
               sessionListCache = null;
             }),
           ),
@@ -1095,13 +1134,15 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
                 ? { model: input.modelSelection.model }
                 : {}),
             }),
-          catch: (cause) => toRequestError(input.threadId, "turn/start", cause),
+          catch: (cause) =>
+            toRequestError(resolveProvider(input.threadId), input.threadId, "turn/start", cause),
         }).pipe(Effect.map((raw) => coerceTurnStartResult(raw, input.threadId)));
 
       const interruptTurn: HarnessClientAdapterShape["interruptTurn"] = (threadId, turnId) =>
         Effect.tryPromise({
           try: () => manager.interruptTurn(threadId, turnId),
-          catch: (cause) => toRequestError(threadId, "turn/interrupt", cause),
+          catch: (cause) =>
+            toRequestError(resolveProvider(threadId), threadId, "turn/interrupt", cause),
         });
 
       const respondToRequest: HarnessClientAdapterShape["respondToRequest"] = (
@@ -1118,7 +1159,13 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
               typeof decisionStr === "string" ? decisionStr : JSON.stringify(decisionStr),
             );
           },
-          catch: (cause) => toRequestError(threadId, "item/requestApproval/decision", cause),
+          catch: (cause) =>
+            toRequestError(
+              resolveProvider(threadId),
+              threadId,
+              "item/requestApproval/decision",
+              cause,
+            ),
         });
       };
 
@@ -1130,16 +1177,24 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
         Effect.tryPromise({
           try: () =>
             manager.respondToUserInput(threadId, requestId, answers as Record<string, unknown>),
-          catch: (cause) => toRequestError(threadId, "item/tool/requestUserInput", cause),
+          catch: (cause) =>
+            toRequestError(
+              resolveProvider(threadId),
+              threadId,
+              "item/tool/requestUserInput",
+              cause,
+            ),
         });
 
       const stopSession: HarnessClientAdapterShape["stopSession"] = (threadId) =>
         Effect.tryPromise({
           try: () => manager.stopSession(threadId),
-          catch: (cause) => toRequestError(threadId, "session/stop", cause),
+          catch: (cause) =>
+            toRequestError(resolveProvider(threadId), threadId, "session/stop", cause),
         }).pipe(
           Effect.tap(() =>
             Effect.sync(() => {
+              sessionProviderMap.delete(threadId);
               sessionListCache = null;
             }),
           ),
@@ -1169,6 +1224,11 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
           Effect.tap((sessions) =>
             Effect.sync(() => {
               sessionListCache = { sessions, ts: Date.now() };
+              for (const s of sessions) {
+                if (s.threadId && !sessionProviderMap.has(s.threadId)) {
+                  sessionProviderMap.set(s.threadId, (s as any).provider ?? DEFAULT_PROVIDER);
+                }
+              }
             }),
           ),
           Effect.orElseSucceed(() => [] as ReadonlyArray<ProviderSession>),
@@ -1183,14 +1243,15 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
       const readThread: HarnessClientAdapterShape["readThread"] = (threadId) =>
         Effect.tryPromise({
           try: () => manager.readThread(threadId),
-          catch: (cause) => toRequestError(threadId, "thread/read", cause),
+          catch: (cause) =>
+            toRequestError(resolveProvider(threadId), threadId, "thread/read", cause),
         }).pipe(Effect.map((raw) => coerceThreadSnapshot(raw, threadId)));
 
       const rollbackThread: HarnessClientAdapterShape["rollbackThread"] = (threadId, numTurns) => {
         if (!Number.isInteger(numTurns) || numTurns < 1) {
           return Effect.fail(
             new ProviderAdapterValidationError({
-              provider: DEFAULT_PROVIDER,
+              provider: resolveProvider(threadId),
               operation: "rollbackThread",
               issue: "numTurns must be an integer >= 1.",
             }),
@@ -1198,7 +1259,8 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
         }
         return Effect.tryPromise({
           try: () => manager.rollbackThread(threadId, numTurns),
-          catch: (cause) => toRequestError(threadId, "thread/rollback", cause),
+          catch: (cause) =>
+            toRequestError(resolveProvider(threadId), threadId, "thread/rollback", cause),
         }).pipe(Effect.map((raw) => coerceThreadSnapshot(raw, threadId)));
       };
 
@@ -1212,7 +1274,29 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
               detail: toMessage(cause, "Failed to stop all harness sessions."),
               cause,
             }),
-        });
+        }).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              sessionProviderMap.clear();
+              sessionListCache = null;
+            }),
+          ),
+        );
+
+      const listModels: HarnessClientAdapterShape["listModels"] = (provider) =>
+        Effect.tryPromise({
+          try: () => manager.listProviderModels(provider),
+          catch: (cause) =>
+            new ProviderAdapterRequestError({
+              provider: provider as ProviderKind,
+              method: "listModels",
+              detail: toMessage(cause, `Failed to discover models for ${provider}.`),
+              cause,
+            }),
+        }).pipe(
+          Effect.tapError(Effect.logWarning),
+          Effect.orElseSucceed(() => [] as ReadonlyArray<{ slug: string; name: string }>),
+        );
 
       // -------------------------------------------------------------------
       // Assemble the adapter shape
@@ -1220,8 +1304,11 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
 
       return {
         provider: DEFAULT_PROVIDER,
-        capabilities: {
+        capabilities: HARNESS_PROVIDER_CAPABILITIES[DEFAULT_PROVIDER] ?? {
           sessionModelSwitch: "restart-session" as const,
+          supportsUserInput: true,
+          supportsRollback: true,
+          supportsFileChangeApproval: true,
         },
         startSession,
         sendTurn,
@@ -1234,7 +1321,7 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
         readThread,
         rollbackThread,
         stopAll,
-        listProviderModels: (provider: string) => manager.listProviderModels(provider),
+        listModels,
         streamEvents: Stream.fromQueue(runtimeEventQueue),
       } satisfies HarnessClientAdapterShape;
     }),

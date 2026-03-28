@@ -26,7 +26,10 @@ import {
 import type { ProviderAdapterShape } from "./provider/Services/ProviderAdapter";
 import { makeClaudeAdapterLive } from "./provider/Layers/ClaudeAdapter";
 import { makeCodexAdapterLive } from "./provider/Layers/CodexAdapter";
-import { makeHarnessClientAdapterLive } from "./provider/Layers/HarnessClientAdapter";
+import {
+  makeHarnessClientAdapterLive,
+  HARNESS_PROVIDER_CAPABILITIES,
+} from "./provider/Layers/HarnessClientAdapter";
 import { HarnessClientAdapter } from "./provider/Services/HarnessClientAdapter";
 import { ClaudeAdapter } from "./provider/Services/ClaudeAdapter";
 import { CodexAdapter } from "./provider/Services/CodexAdapter";
@@ -36,6 +39,11 @@ import { makeProviderServiceLive } from "./provider/Layers/ProviderService";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory";
 import { ProviderService } from "./provider/Services/ProviderService";
 import { makeEventNdjsonLogger } from "./provider/Layers/EventNdjsonLogger";
+import {
+  ProviderRegistryLive,
+  ProviderRegistryWithHarnessLive,
+} from "./provider/Layers/ProviderRegistry";
+import { ProviderRegistry } from "./provider/Services/ProviderRegistry";
 import { ServerSettingsService } from "./serverSettings";
 
 import { TerminalManagerLive } from "./terminal/Layers/Manager";
@@ -71,7 +79,9 @@ const makeRuntimePtyAdapterLayer = () =>
  * Cursor, and OpenCode are routed through it. Without harness, only
  * Claude and Codex (via Node SDK) are available.
  */
-export function makeServerProviderLayer(): Layer.Layer<
+export function makeServerProviderLayer(options?: {
+  harnessAdapterLayer?: ReturnType<typeof makeHarnessClientAdapterLive>;
+}): Layer.Layer<
   ProviderService,
   ProviderUnsupportedError | ProviderAdapterProcessError,
   | SqlClient.SqlClient
@@ -123,6 +133,8 @@ export function makeServerProviderLayer(): Layer.Layer<
               byProvider.set(providerKind, {
                 ...harnessBaseAdapter,
                 provider: providerKind,
+                capabilities:
+                  HARNESS_PROVIDER_CAPABILITIES[providerKind] ?? harnessBaseAdapter.capabilities,
               } as Adapter);
             }
 
@@ -142,7 +154,7 @@ export function makeServerProviderLayer(): Layer.Layer<
           }),
         ).pipe(
           Layer.provide(claudeAdapterLayer),
-          Layer.provideMerge(makeHarnessClientAdapterLive()),
+          Layer.provideMerge(options?.harnessAdapterLayer ?? makeHarnessClientAdapterLive()),
           Layer.provideMerge(providerSessionDirectoryLayer),
         )
       : ProviderAdapterRegistryLive.pipe(
@@ -211,4 +223,25 @@ export function makeServerRuntimeServicesLayer() {
     terminalLayer,
     KeybindingsLive,
   ).pipe(Layer.provideMerge(NodeServices.layer));
+}
+
+/**
+ * Returns the appropriate ProviderRegistry layer depending on whether the
+ * Elixir harness is available (harnessPort in ServerConfig).
+ *
+ * When harness is enabled, Cursor and OpenCode model discovery is included.
+ */
+export function makeProviderRegistryLayer(options?: {
+  harnessAdapterLayer?: ReturnType<typeof makeHarnessClientAdapterLive>;
+}) {
+  return Effect.gen(function* () {
+    const serverConfig = yield* ServerConfig;
+    const harnessEnabled = serverConfig.harnessPort !== undefined;
+    if (harnessEnabled) {
+      return ProviderRegistryWithHarnessLive.pipe(
+        Layer.provide(options?.harnessAdapterLayer ?? makeHarnessClientAdapterLive()),
+      );
+    }
+    return ProviderRegistryLive;
+  }).pipe(Layer.unwrap);
 }

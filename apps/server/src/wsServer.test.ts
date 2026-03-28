@@ -1282,7 +1282,13 @@ describe("WebSocket Server", () => {
       respondToUserInput: () => unsupported(),
       stopSession: () => unsupported(),
       listSessions: () => Effect.succeed([]),
-      getCapabilities: () => Effect.succeed({ sessionModelSwitch: "in-session" }),
+      getCapabilities: () =>
+        Effect.succeed({
+          sessionModelSwitch: "in-session" as const,
+          supportsUserInput: true,
+          supportsRollback: true,
+          supportsFileChangeApproval: true,
+        }),
       rollbackConversation: () => unsupported(),
       streamEvents: Stream.fromPubSub(runtimeEventPubSub),
     };
