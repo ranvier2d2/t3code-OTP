@@ -24,6 +24,9 @@ export interface CodexAdapterShape extends ProviderAdapterShape<ProviderAdapterE
 
 /**
  * CodexAdapter - Service tag for Codex provider adapter operations.
+ *
+ * @deprecated Prefer the harness-backed Codex path. Set `T3CODE_CODEX_LEGACY=1`
+ * only as a temporary rollback while the direct adapter remains available.
  */
 export class CodexAdapter extends ServiceMap.Service<CodexAdapter, CodexAdapterShape>()(
   "t3/provider/Services/CodexAdapter",

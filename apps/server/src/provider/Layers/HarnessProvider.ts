@@ -9,7 +9,6 @@
  */
 import type {
   HarnessProviderSettings,
-  ProviderKind,
   ServerProvider,
   ServerProviderModel,
 } from "@t3tools/contracts";
@@ -23,7 +22,7 @@ import { HarnessClientAdapter } from "../Services/HarnessClientAdapter";
 import { ServerSettingsService } from "../../serverSettings";
 import { HARNESS_PROVIDER_CAPABILITIES } from "./HarnessClientAdapter";
 
-function makeHarnessProviderLayer(provider: ProviderKind) {
+function makeHarnessProviderLayer(provider: "cursor" | "opencode") {
   return Effect.gen(function* () {
     const harnessAdapter = yield* HarnessClientAdapter;
     const serverSettings = yield* ServerSettingsService;

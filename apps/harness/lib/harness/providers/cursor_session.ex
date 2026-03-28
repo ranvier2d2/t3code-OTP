@@ -9,6 +9,7 @@ defmodule Harness.Providers.CursorSession do
   - Multi-turn via --resume flag
   """
   use GenServer, restart: :temporary
+  @behaviour Harness.ProviderSession
 
   alias Harness.Event
 

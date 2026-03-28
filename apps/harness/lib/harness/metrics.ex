@@ -11,9 +11,12 @@ defmodule Harness.Metrics do
   Collect a full metrics snapshot.
   """
   def collect do
+    sessions = session_metrics()
+
     %{
       beam: beam_metrics(),
-      sessions: session_metrics(),
+      sessions: sessions,
+      lifecycle: lifecycle_metrics(sessions),
       snapshot_server: snapshot_server_metrics(),
       timestamp: System.system_time(:millisecond)
     }
@@ -83,6 +86,15 @@ defmodule Harness.Metrics do
       _ ->
         []
     end)
+  end
+
+  defp lifecycle_metrics(sessions) do
+    %{
+      active_sessions: length(sessions),
+      sessions_by_provider: Enum.frequencies_by(sessions, & &1.provider),
+      sessions_with_backlog: Enum.count(sessions, &(&1.message_queue_len > 0)),
+      total_message_queue_len: Enum.reduce(sessions, 0, &(&1.message_queue_len + &2))
+    }
   end
 
   defp process_metrics(pid) do

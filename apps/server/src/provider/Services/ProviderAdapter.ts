@@ -36,6 +36,16 @@ export interface ProviderAdapterCapabilities {
   readonly supportsRollback: boolean;
   /** Whether this provider supports file-change approval requests. */
   readonly supportsFileChangeApproval: boolean;
+  /** Whether the provider can resume prior sessions. */
+  readonly resume: "none" | "basic" | "full";
+  /** Whether the provider supports collaboration/subagent flows. */
+  readonly subagents: "none" | "basic" | "full";
+  /** Whether the provider accepts turn attachments. */
+  readonly attachments: "none" | "basic" | "full";
+  /** Whether the provider can replay prior runtime history. */
+  readonly replay: "none" | "basic" | "full";
+  /** Whether the provider accepts central MCP configuration. */
+  readonly mcpConfig: "none" | "basic" | "full";
 }
 
 export interface ProviderThreadTurnSnapshot {

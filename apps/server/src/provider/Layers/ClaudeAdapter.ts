@@ -59,6 +59,7 @@ import {
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { DIRECT_PROVIDER_CAPABILITIES } from "../providerCapabilities.ts";
 import { getClaudeModelCapabilities } from "./ClaudeProvider.ts";
 import {
   ProviderAdapterProcessError,
@@ -3107,12 +3108,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
 
     return {
       provider: PROVIDER,
-      capabilities: {
-        sessionModelSwitch: "in-session",
-        supportsUserInput: true,
-        supportsRollback: true,
-        supportsFileChangeApproval: true,
-      },
+      capabilities: DIRECT_PROVIDER_CAPABILITIES.claudeAgent,
       startSession,
       sendTurn,
       interruptTurn,

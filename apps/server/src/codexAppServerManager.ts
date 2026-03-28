@@ -513,6 +513,10 @@ export interface CodexAppServerManagerEvents {
   event: [event: ProviderEvent];
 }
 
+/**
+ * @deprecated Prefer the harness-backed Codex path. This manager remains only
+ * as the legacy direct-session fallback behind `T3CODE_CODEX_LEGACY=1`.
+ */
 export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEvents> {
   private readonly sessions = new Map<ThreadId, CodexSessionContext>();
 

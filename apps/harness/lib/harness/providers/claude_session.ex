@@ -15,6 +15,7 @@ defmodule Harness.Providers.ClaudeSession do
   parse its stdout JSON stream ourselves — same wire format, no SDK wrapper needed.
   """
   use GenServer, restart: :temporary
+  @behaviour Harness.ProviderSession
 
   alias Harness.Event
 

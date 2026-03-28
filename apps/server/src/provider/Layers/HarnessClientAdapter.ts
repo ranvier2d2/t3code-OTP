@@ -12,13 +12,14 @@
  *
  * @module HarnessClientAdapterLive
  */
+import fs from "node:fs";
 import http from "node:http";
+import path from "node:path";
 
 import {
   type ApprovalRequestId,
   type EventId,
   type IsoDateTime,
-  type ProviderApprovalDecision,
   type ProviderEvent,
   type ProviderItemId,
   type ProviderKind,
@@ -32,7 +33,7 @@ import {
   type ThreadId,
   type TurnId,
 } from "@t3tools/contracts";
-import { Effect, Layer, Queue, Schema, ServiceMap, Stream } from "effect";
+import { Effect, Layer, Queue, Schema, Stream } from "effect";
 
 import {
   ProviderAdapterProcessError,
@@ -46,8 +47,16 @@ import {
   HarnessClientAdapter,
   type HarnessClientAdapterShape,
 } from "../Services/HarnessClientAdapter.ts";
+import { HARNESS_PROVIDER_CAPABILITIES } from "../providerCapabilities.ts";
+import { McpConfigService } from "../Services/McpConfig.ts";
+import {
+  codexTomlFromResolved,
+  generatedMcpDir,
+  openCodeConfigFromResolved,
+} from "../mcpTranslation.ts";
 import { type HarnessRawEvent, HarnessClientManager } from "./HarnessClientManager.ts";
 import { ServerConfig } from "../../config.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
 import { mapToRuntimeEvents as codexMapToRuntimeEvents } from "./codexEventMapping.ts";
 
 // ---------------------------------------------------------------------------
@@ -58,30 +67,7 @@ import { mapToRuntimeEvents as codexMapToRuntimeEvents } from "./codexEventMappi
 // for error context when the provider is not known from the request.
 const DEFAULT_PROVIDER = "codex" as const;
 
-/** Per-provider capabilities for harness-backed providers. */
-export const HARNESS_PROVIDER_CAPABILITIES: Record<
-  string,
-  import("../Services/ProviderAdapter.ts").ProviderAdapterCapabilities
-> = {
-  codex: {
-    sessionModelSwitch: "restart-session",
-    supportsUserInput: true,
-    supportsRollback: true,
-    supportsFileChangeApproval: true,
-  },
-  cursor: {
-    sessionModelSwitch: "restart-session",
-    supportsUserInput: false,
-    supportsRollback: false,
-    supportsFileChangeApproval: false,
-  },
-  opencode: {
-    sessionModelSwitch: "restart-session",
-    supportsUserInput: true,
-    supportsRollback: true,
-    supportsFileChangeApproval: true,
-  },
-};
+export { HARNESS_PROVIDER_CAPABILITIES } from "../providerCapabilities.ts";
 
 /** Default port the Elixir harness Phoenix app listens on. */
 const DEFAULT_HARNESS_PORT = 4321;
@@ -983,6 +969,8 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
     HarnessClientAdapter,
     Effect.gen(function* () {
       const serverConfig = yield* Effect.service(ServerConfig);
+      const serverSettings = yield* ServerSettingsService;
+      const mcpConfigService = yield* Effect.service(McpConfigService);
 
       const harnessPort = options?.harnessPort ?? serverConfig.harnessPort ?? DEFAULT_HARNESS_PORT;
       const harnessSecret =
@@ -1095,25 +1083,113 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
         // The harness adapter handles all providers — routing happens in Elixir.
         const provider = input.provider ?? DEFAULT_PROVIDER;
 
-        return Effect.tryPromise({
-          try: () =>
-            manager.startSession({
-              threadId: input.threadId,
-              provider,
-              ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
-              ...(input.modelSelection?.model !== undefined
-                ? { model: input.modelSelection.model }
-                : {}),
-              runtimeMode: input.runtimeMode,
-              ...(input.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
-            }),
-          catch: (cause) =>
-            new ProviderAdapterProcessError({
-              provider,
-              threadId: input.threadId,
-              detail: toMessage(cause, "Failed to start harness session."),
-              cause,
-            }),
+        return Effect.gen(function* () {
+          const resolvedMcp = yield* mcpConfigService.getSnapshot(input.threadId);
+          const settings = yield* serverSettings.getSettings.pipe(
+            Effect.mapError(
+              (cause) =>
+                new ProviderAdapterProcessError({
+                  provider,
+                  threadId: input.threadId,
+                  detail: "Failed to read server settings for harness session startup.",
+                  cause,
+                }),
+            ),
+          );
+          const baseCodexHomePath = settings.providers.codex.homePath.trim() || undefined;
+          const providerOptions =
+            resolvedMcp && resolvedMcp.servers.length > 0
+              ? yield* Effect.try({
+                  try: () => {
+                    switch (provider) {
+                      case "codex": {
+                        const generatedDir = generatedMcpDir(
+                          serverConfig.stateDir,
+                          "codex",
+                          input.threadId,
+                        );
+                        fs.rmSync(generatedDir, { recursive: true, force: true });
+                        const generatedHomePath = path.join(generatedDir, "home");
+                        fs.mkdirSync(generatedHomePath, { recursive: true });
+                        if (
+                          baseCodexHomePath &&
+                          fs.existsSync(baseCodexHomePath) &&
+                          baseCodexHomePath !== generatedHomePath
+                        ) {
+                          fs.cpSync(baseCodexHomePath, generatedHomePath, {
+                            recursive: true,
+                            force: true,
+                          });
+                        }
+                        const configTomlPath = path.join(generatedHomePath, "config.toml");
+                        const existingConfig = fs.existsSync(configTomlPath)
+                          ? fs.readFileSync(configTomlPath, "utf8")
+                          : "";
+                        fs.writeFileSync(
+                          configTomlPath,
+                          existingConfig + codexTomlFromResolved(resolvedMcp),
+                          "utf8",
+                        );
+                        return {
+                          codex: {
+                            homePath: generatedHomePath,
+                          },
+                        };
+                      }
+                      case "opencode": {
+                        const generatedDir = generatedMcpDir(
+                          serverConfig.stateDir,
+                          "opencode",
+                          input.threadId,
+                        );
+                        fs.mkdirSync(generatedDir, { recursive: true });
+                        const configPath = path.join(generatedDir, "opencode.json");
+                        fs.writeFileSync(
+                          configPath,
+                          openCodeConfigFromResolved(resolvedMcp),
+                          "utf8",
+                        );
+                        return {
+                          opencode: {
+                            configPath,
+                          },
+                        };
+                      }
+                      default:
+                        return undefined;
+                    }
+                  },
+                  catch: (cause) =>
+                    new ProviderAdapterProcessError({
+                      provider,
+                      threadId: input.threadId,
+                      detail: "Failed to materialize harness MCP configuration.",
+                      cause,
+                    }),
+                })
+              : undefined;
+
+          return yield* Effect.tryPromise({
+            try: () =>
+              manager.startSession({
+                threadId: input.threadId,
+                provider,
+                ...(input.cwd !== undefined ? { cwd: input.cwd } : {}),
+                ...(input.modelSelection?.model !== undefined
+                  ? { model: input.modelSelection.model }
+                  : {}),
+                runtimeMode: input.runtimeMode,
+                ...(input.resumeCursor !== undefined ? { resumeCursor: input.resumeCursor } : {}),
+                ...(providerOptions ? { providerOptions } : {}),
+              }),
+            catch: (cause) =>
+              new ProviderAdapterProcessError({
+                provider,
+                threadId: input.threadId,
+                detail: toMessage(cause, "Failed to start harness session."),
+                cause,
+              }),
+          });
         }).pipe(
           Effect.tap(() =>
             Effect.sync(() => {
@@ -1309,6 +1385,11 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
           supportsUserInput: true,
           supportsRollback: true,
           supportsFileChangeApproval: true,
+          resume: "full",
+          subagents: "none",
+          attachments: "basic",
+          replay: "full",
+          mcpConfig: "basic",
         },
         startSession,
         sendTurn,

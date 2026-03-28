@@ -36,6 +36,7 @@ defmodule Harness.Providers.OpenCodeSession do
   - Emits `collab_agent_spawn_begin` with parent→child linkage
   """
   use GenServer, restart: :temporary
+  @behaviour Harness.ProviderSession
 
   alias Harness.Event
 
@@ -564,7 +565,7 @@ defmodule Harness.Providers.OpenCodeSession do
             {:line, 65_536},
             {:cd, to_charlist(cwd)},
             {:args, Enum.map(args, &to_charlist/1)},
-            {:env, build_env()}
+            {:env, build_env(state)}
           ]
         )
 
@@ -574,9 +575,18 @@ defmodule Harness.Providers.OpenCodeSession do
     end
   end
 
-  defp build_env do
-    System.get_env()
-    |> Enum.map(fn {k, v} -> {to_charlist(k), to_charlist(v)} end)
+  defp build_env(state) do
+    base =
+      System.get_env()
+      |> Enum.map(fn {k, v} -> {to_charlist(k), to_charlist(v)} end)
+
+    opencode_config_path = get_in(state.params, ["providerOptions", "opencode", "configPath"])
+
+    if is_binary(opencode_config_path) and opencode_config_path != "" do
+      [{~c"OPENCODE_CONFIG", to_charlist(opencode_config_path)} | base]
+    else
+      base
+    end
   end
 
   defp wait_for_server(_base_url, 0), do: {:error, :timeout}

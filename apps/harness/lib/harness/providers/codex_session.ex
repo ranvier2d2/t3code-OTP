@@ -15,6 +15,7 @@ defmodule Harness.Providers.CodexSession do
   - Collab child conversation suppression
   """
   use GenServer, restart: :temporary
+  @behaviour Harness.ProviderSession
 
   alias Harness.JsonRpc
   alias Harness.Event
