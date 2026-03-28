@@ -933,6 +933,15 @@ function configureAutoUpdater(): void {
   }, AUTO_UPDATE_POLL_INTERVAL_MS);
   updatePollTimer.unref();
 }
+/**
+ * Schedules a delayed restart of the backend process after an unexpected exit.
+ *
+ * If the app is quitting or a restart is already scheduled, this is a no-op. Otherwise it logs the provided
+ * reason, increments the restart attempt counter, and sets a timeout to call `startBackend()` after an
+ * exponentially backed-off delay (capped at 10 seconds).
+ *
+ * @param reason - Human-readable reason for the restart (used for logging)
+ */
 function scheduleBackendRestart(reason: string): void {
   if (isQuitting || restartTimer) return;
 
@@ -951,9 +960,11 @@ function scheduleBackendRestart(reason: string): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Resolve the path to the bundled harness release binary.
- * In packaged mode: Contents/Resources/harness-rel/bin/harness
- * In development: falls back to T3CODE_HARNESS_PORT env var (no bundled release).
+ * Locate the bundled Elixir harness release binary if it exists.
+ *
+ * Checks the packaged resources directory for "harness-rel/bin/harness" and returns its path when found.
+ *
+ * @returns The absolute path to the bundled harness binary, or `null` if the bundled release is not present.
  */
 function resolveHarnessReleasePath(): string | null {
   const relPath = Path.join(process.resourcesPath, "harness-rel", "bin", "harness");
@@ -962,9 +973,11 @@ function resolveHarnessReleasePath(): string | null {
 }
 
 /**
- * Start the bundled Elixir harness as a child process.
- * If no bundled release exists, falls back to T3CODE_HARNESS_PORT env var.
- * Returns true if harness is available (bundled or external).
+ * Start and initialize the Elixir harness process (either an external harness specified via environment variables or the bundled release) and configure the harness connection information.
+ *
+ * If an external harness is specified by T3CODE_HARNESS_PORT (and valid), the function records that port and the harness secret. If a bundled harness release exists, the function spawns it as a child process, sets runtime harness state, captures its stdout/stderr to the desktop log, and clears the in-memory child reference when it exits.
+ *
+ * @returns `true` if a harness is available (external override detected or the bundled harness was started), `false` otherwise.
  */
 function startHarness(): boolean {
   // Check for external harness first (dev override)
@@ -1023,6 +1036,13 @@ function startHarness(): boolean {
   return true;
 }
 
+/**
+ * Stops the running harness child process and clears the stored reference.
+ *
+ * If a harness process exists and is still running, sends `SIGTERM` and, after 2 seconds,
+ * sends `SIGKILL` if the process has not exited. Clears the internal `harnessProcess`
+ * reference immediately.
+ */
 function stopHarness(): void {
   const child = harnessProcess;
   harnessProcess = null;
@@ -1038,6 +1058,16 @@ function stopHarness(): void {
   }
 }
 
+/**
+ * Starts and supervises the bundled backend server process for the desktop app.
+ *
+ * If the app is already quitting or the backend is running, this is a no-op. When started,
+ * the function spawns a Node-mode child process for the backend, sends a JSON bootstrap
+ * configuration (including reserved port, auth token, T3 home, and harness connection info
+ * when available) via an IPC pipe, and captures its output into the packaged log sink when enabled.
+ * It records session START/END boundaries and will schedule automatic restarts on spawn errors,
+ * missing bootstrap pipe, unexpected exits, or when the backend entry file is absent.
+ */
 function startBackend(): void {
   if (isQuitting || backendProcess) return;
 
@@ -1436,6 +1466,11 @@ app.setPath("userData", resolveUserDataPath());
 
 configureAppIdentity();
 
+/**
+ * Initializes the desktop runtime: reserves a backend port, generates an auth token, persists discovery files, registers IPC handlers, starts the harness and backend processes, and creates the main application window.
+ *
+ * This sets global runtime state used by other modules (including `backendPort`, `backendAuthToken`, and `backendWsUrl`), writes best-effort discovery files under `BASE_DIR` (`desktop-port` and `desktop-token`), registers IPC handlers for renderer communication, requests startup of the optional harness, starts the backend server, and creates the primary BrowserWindow.
+ */
 async function bootstrap(): Promise<void> {
   writeDesktopLogHeader("bootstrap start");
   backendPort = await Effect.service(NetService).pipe(

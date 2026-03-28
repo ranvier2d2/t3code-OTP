@@ -46,6 +46,12 @@ const SYNTHESIS_MODEL = { provider: "codex", model: "gpt-5.4", label: "GPT-5.4 (
 
 const args = process.argv.slice(2);
 
+/**
+ * Retrieve the value that immediately follows a given CLI flag in the parsed args.
+ *
+ * @param flag - The CLI flag to search for (include leading dashes, e.g. `--file`)
+ * @returns The token following `flag` if present and not another `--` flag, `undefined` otherwise
+ */
 function getFlag(flag: string): string | undefined {
   const idx = args.indexOf(flag);
   const next = idx >= 0 ? args[idx + 1] : undefined;
@@ -94,7 +100,11 @@ if (activeProviders.length === 0) {
 
 // ---------------------------------------------------------------------------
 // Helpers
-// ---------------------------------------------------------------------------
+/**
+ * Generates a short, random identifier.
+ *
+ * @returns An 8-character string derived from a UUID suitable for use in filenames or IDs.
+ */
 
 function shortId(): string {
   return crypto.randomUUID().slice(0, 8);
@@ -125,7 +135,13 @@ interface CouncilManifest {
 
 // ---------------------------------------------------------------------------
 // Main
-// ---------------------------------------------------------------------------
+/**
+ * Dispatches the provided prompt to a separate thread for each active provider in T3, records the dispatched threads and metadata to a manifest file, and exits the process.
+ *
+ * Connects to a T3 project (using a bootstrap ID or snapshot lookup), creates a thread and starts a user turn with the final prompt for each configured provider, collects per-provider thread metadata into a manifest, writes the manifest to disk (ensuring the target directory exists), and disconnects before exiting.
+ *
+ * @throws Error if no project can be found in the connected T3 instance
+ */
 
 async function main() {
   const councilId = shortId();
