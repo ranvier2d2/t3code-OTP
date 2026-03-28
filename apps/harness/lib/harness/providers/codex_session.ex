@@ -14,6 +14,8 @@ defmodule Harness.Providers.CodexSession do
   - Thread resume with recoverable error fallback
   - Collab child conversation suppression
   """
+  @behaviour Harness.Providers.ProviderBehaviour
+
   use GenServer, restart: :temporary
 
   alias Harness.JsonRpc
@@ -103,6 +105,7 @@ defmodule Harness.Providers.CodexSession do
 
   # --- Public API ---
 
+  @impl Harness.Providers.ProviderBehaviour
   def start_link(opts) do
     thread_id = Map.fetch!(opts, :thread_id)
 
@@ -112,28 +115,39 @@ defmodule Harness.Providers.CodexSession do
     )
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def send_turn(pid, params) do
     GenServer.call(pid, {:send_turn, params}, 30_000)
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def interrupt_turn(pid, _thread_id, turn_id) do
     GenServer.call(pid, {:interrupt_turn, turn_id})
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def respond_to_approval(pid, request_id, decision) do
     GenServer.call(pid, {:respond_to_approval, request_id, decision})
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def respond_to_user_input(pid, request_id, answers) do
     GenServer.call(pid, {:respond_to_user_input, request_id, answers})
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def read_thread(pid, thread_id) do
     GenServer.call(pid, {:read_thread, thread_id}, 30_000)
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def rollback_thread(pid, thread_id, num_turns) do
     GenServer.call(pid, {:rollback_thread, thread_id, num_turns}, 30_000)
+  end
+
+  @impl Harness.Providers.ProviderBehaviour
+  def stop(pid) do
+    GenServer.stop(pid, :normal)
   end
 
   def wait_for_ready(pid, timeout \\ 30_000) do
