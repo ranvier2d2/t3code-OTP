@@ -154,7 +154,7 @@ async function main() {
 
   // Desktop mode may not include bootstrapProjectId in welcome — look it up
   if (!projectId) {
-    const snapshot = (await client.request("orchestration.getSnapshot", {})) as {
+    const snapshot = (await client.send("orchestration.getSnapshot", {})) as {
       projects?: Array<{ id: string }>;
     };
     projectId = snapshot?.projects?.[0]?.id ?? "";
