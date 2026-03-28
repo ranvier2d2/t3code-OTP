@@ -1293,7 +1293,10 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
               detail: toMessage(cause, `Failed to discover models for ${provider}.`),
               cause,
             }),
-        }).pipe(Effect.orElseSucceed(() => [] as ReadonlyArray<{ slug: string; name: string }>));
+        }).pipe(
+          Effect.tapError(Effect.logWarning),
+          Effect.orElseSucceed(() => [] as ReadonlyArray<{ slug: string; name: string }>),
+        );
 
       // -------------------------------------------------------------------
       // Assemble the adapter shape
