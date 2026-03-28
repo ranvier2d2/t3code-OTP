@@ -94,8 +94,15 @@ export class T3Client {
     const url = this.authToken ? `${base}?token=${this.authToken}` : base;
 
     return new Promise((resolve, reject) => {
+      let settled = false;
       this.ws = new WebSocket(url);
-      this.ws.on("error", (err) => reject(err));
+
+      this.ws.on("error", (err) => {
+        if (!settled) {
+          settled = true;
+          reject(err);
+        }
+      });
 
       this.ws.on("message", (raw) => {
         let msg: Record<string, unknown>;
@@ -108,6 +115,7 @@ export class T3Client {
         // Push messages
         if (msg.type === "push" && msg.channel) {
           if (msg.channel === "server.welcome") {
+            settled = true;
             resolve(msg.data as Record<string, unknown>);
             return;
           }
@@ -147,6 +155,10 @@ export class T3Client {
       });
 
       this.ws.on("close", () => {
+        if (!settled) {
+          settled = true;
+          reject(new Error("WebSocket closed before server.welcome"));
+        }
         for (const [, p] of this.pending) {
           p.reject(new Error("WebSocket closed"));
         }
