@@ -280,8 +280,13 @@ export function makeServerProviderLayer(options?: {
 
     const providerServiceLayer = makeProviderServiceLive(
       canonicalEventLogger ? { canonicalEventLogger } : undefined,
-    ).pipe(Layer.provide(adapterRegistryLayer), Layer.provide(providerSessionDirectoryLayer));
+    ).pipe(
+      Layer.provide(adapterRegistryLayer),
+      Layer.provide(providerSessionDirectoryLayer),
+      Layer.provide(McpConfigServiceLive),
+    );
 
+    // Expose both ProviderService and McpConfigService to consumers.
     return Layer.mergeAll(providerServiceLayer, McpConfigServiceLive);
   }).pipe(Layer.unwrap);
 }

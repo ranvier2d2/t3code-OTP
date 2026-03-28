@@ -496,6 +496,7 @@ export const makeTestProviderAdapterHarness = (options?: MakeTestProviderAdapter
       readThread,
       rollbackThread,
       stopAll,
+      translateMcpConfig: () => Effect.succeed(null),
       streamEvents: Stream.fromQueue(runtimeEvents),
     };
 

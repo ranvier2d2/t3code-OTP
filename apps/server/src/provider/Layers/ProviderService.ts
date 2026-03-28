@@ -45,6 +45,7 @@ import {
   type ProviderErrorCategory,
   ProviderValidationError,
 } from "../Errors.ts";
+import { McpConfigService } from "../Services/McpConfig.ts";
 import { ProviderAdapterRegistry } from "../Services/ProviderAdapterRegistry.ts";
 import { ProviderService, type ProviderServiceShape } from "../Services/ProviderService.ts";
 import {
@@ -248,6 +249,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
   Effect.gen(function* () {
     const analytics = yield* Effect.service(AnalyticsService);
     const serverSettings = yield* ServerSettingsService;
+    const mcpConfig = yield* McpConfigService;
     const canonicalEventLogger =
       options?.canonicalEventLogger ??
       (options?.canonicalEventLogPath !== undefined
@@ -480,10 +482,23 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         }
 
         const adapter = yield* registry.getByProvider(input.provider);
+
+        // Resolve MCP config and translate via adapter before session start.
+        const resolvedMcp = yield* mcpConfig
+          .resolveConfig({
+            provider: input.provider,
+            cwd: input.cwd ?? ".",
+            threadId: String(threadId),
+          })
+          .pipe(Effect.orElseSucceed(() => null));
+        const translatedMcp =
+          resolvedMcp !== null ? yield* adapter.translateMcpConfig(resolvedMcp) : null;
+
         const session = yield* adapter.startSession({
           ...input,
           ...(effectiveResumeCursor !== undefined ? { resumeCursor: effectiveResumeCursor } : {}),
-        });
+          ...(translatedMcp !== null ? translatedMcp : {}),
+        } as typeof input);
 
         if (session.provider !== adapter.provider) {
           return yield* toValidationError(
@@ -494,6 +509,7 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
 
         yield* upsertSessionBinding(session, threadId, {
           modelSelection: input.modelSelection,
+          ...(resolvedMcp !== null ? { mcpConfigVersion: resolvedMcp.version } : {}),
         });
         yield* analytics.record("provider.session.started", {
           provider: session.provider,

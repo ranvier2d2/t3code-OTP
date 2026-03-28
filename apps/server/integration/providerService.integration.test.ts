@@ -18,6 +18,7 @@ import { AnalyticsService } from "../src/telemetry/Services/AnalyticsService.ts"
 import { SqlitePersistenceMemory } from "../src/persistence/Layers/Sqlite.ts";
 import { ProviderSessionRuntimeRepositoryLive } from "../src/persistence/Layers/ProviderSessionRuntime.ts";
 
+import { McpConfigServiceLive } from "../src/provider/Layers/McpConfig.ts";
 import {
   makeTestProviderAdapterHarness,
   type TestProviderAdapterHarness,
@@ -66,7 +67,10 @@ const makeIntegrationFixture = Effect.gen(function* () {
     AnalyticsService.layerTest,
   ).pipe(Layer.provide(SqlitePersistenceMemory));
 
-  const layer = makeProviderServiceLive().pipe(Layer.provide(shared));
+  const layer = makeProviderServiceLive().pipe(
+    Layer.provide(shared),
+    Layer.provide(McpConfigServiceLive),
+  );
 
   return {
     cwd,

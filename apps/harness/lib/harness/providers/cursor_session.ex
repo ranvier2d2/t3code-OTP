@@ -24,6 +24,7 @@ defmodule Harness.Providers.CursorSession do
     :session_id,
     :resume_session_id,
     :binary_path,
+    :mcp_config,
     turn_state: nil,
     pending_approvals: %{},
     turns: [],
@@ -91,7 +92,8 @@ defmodule Harness.Providers.CursorSession do
       binary_path: binary_path,
       session_id: cursor_chat_id || generate_id(),
       resume_session_id: resume_session_id,
-      has_real_chat_id: cursor_chat_id != nil
+      has_real_chat_id: cursor_chat_id != nil,
+      mcp_config: Map.get(params, "mcp_config")
     }
 
     # Don't spawn cursor yet — spawn on first send_turn with the actual prompt.

@@ -16,6 +16,7 @@ import type {
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
+  ResolvedMcpConfig,
   ThreadId,
   ProviderTurnStartResult,
   TurnId,
@@ -146,6 +147,17 @@ export interface ProviderAdapterShape<TError> {
    * Stop all sessions owned by this adapter.
    */
   readonly stopAll: () => Effect.Effect<void, TError>;
+
+  /**
+   * Translate a resolved MCP config into provider-native parameters.
+   *
+   * Returns a JSON-serializable object to include in start_session params,
+   * or null if the provider does not accept external MCP configuration
+   * (e.g., Claude manages its own MCP natively).
+   */
+  readonly translateMcpConfig: (
+    config: ResolvedMcpConfig,
+  ) => Effect.Effect<Record<string, unknown> | null>;
 
   /**
    * Canonical runtime event stream emitted by this adapter.

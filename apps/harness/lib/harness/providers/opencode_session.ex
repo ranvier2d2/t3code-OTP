@@ -54,6 +54,7 @@ defmodule Harness.Providers.OpenCodeSession do
     :sse_pid,
     :base_url,
     :binary_path,
+    :mcp_config,
     turn_state: nil,
     pending_permissions: %{},
     messages: [],
@@ -110,13 +111,16 @@ defmodule Harness.Providers.OpenCodeSession do
 
   @impl true
   def init(opts) do
+    params = Map.get(opts, :params, %{})
+
     state = %__MODULE__{
       thread_id: Map.fetch!(opts, :thread_id),
       provider: "opencode",
       event_callback: Map.fetch!(opts, :event_callback),
-      params: Map.get(opts, :params, %{}),
+      params: params,
       binary_path: resolve_opencode_binary(opts),
-      opencode_port: find_available_port()
+      opencode_port: find_available_port(),
+      mcp_config: Map.get(params, "mcp_config")
     }
 
     state = %{state | base_url: "http://127.0.0.1:#{state.opencode_port}"}

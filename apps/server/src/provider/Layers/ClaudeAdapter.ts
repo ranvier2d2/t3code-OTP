@@ -3129,6 +3129,9 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
       listSessions,
       hasSession,
       stopAll,
+      // Claude manages its own MCP natively through the Agent SDK.
+      // The translator always returns null — external MCP config is ignored.
+      translateMcpConfig: () => Effect.succeed(null),
       streamEvents: Stream.fromQueue(runtimeEventQueue),
     } satisfies ClaudeAdapterShape;
   });

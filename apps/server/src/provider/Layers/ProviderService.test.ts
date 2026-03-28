@@ -44,6 +44,7 @@ import {
 } from "../../persistence/Layers/Sqlite.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { AnalyticsService } from "../../telemetry/Services/AnalyticsService.ts";
+import { McpConfigServiceLive } from "./McpConfig.ts";
 
 const defaultServerSettingsLayer = ServerSettingsService.layerTest();
 
@@ -199,6 +200,7 @@ function makeFakeCodexAdapter(provider: ProviderKind = "codex") {
     readThread,
     rollbackThread,
     stopAll,
+    translateMcpConfig: () => Effect.succeed(null),
     streamEvents: Stream.fromPubSub(runtimeEventPubSub),
   };
 
@@ -263,6 +265,7 @@ function makeProviderServiceLayer() {
         Layer.provide(providerAdapterLayer),
         Layer.provide(directoryLayer),
         Layer.provide(defaultServerSettingsLayer),
+        Layer.provide(McpConfigServiceLive),
         Layer.provideMerge(AnalyticsService.layerTest),
       ),
       directoryLayer,
@@ -308,6 +311,7 @@ it.effect("ProviderServiceLive rejects new sessions for disabled providers", () 
       Layer.provide(providerAdapterLayer),
       Layer.provide(directoryLayer),
       Layer.provide(serverSettingsLayer),
+      Layer.provide(McpConfigServiceLive),
       Layer.provide(AnalyticsService.layerTest),
     );
 
@@ -361,6 +365,7 @@ it.effect("ProviderServiceLive keeps persisted resumable sessions on startup", (
       Layer.provide(Layer.succeed(ProviderAdapterRegistry, registry)),
       Layer.provide(directoryLayer),
       Layer.provide(defaultServerSettingsLayer),
+      Layer.provide(McpConfigServiceLive),
       Layer.provide(AnalyticsService.layerTest),
     );
 
@@ -421,6 +426,7 @@ it.effect(
         Layer.provide(Layer.succeed(ProviderAdapterRegistry, firstRegistry)),
         Layer.provide(firstDirectoryLayer),
         Layer.provide(defaultServerSettingsLayer),
+        Layer.provide(McpConfigServiceLive),
         Layer.provide(AnalyticsService.layerTest),
       );
       const updatedResumeCursor = {
@@ -473,6 +479,7 @@ it.effect(
         Layer.provide(Layer.succeed(ProviderAdapterRegistry, secondRegistry)),
         Layer.provide(secondDirectoryLayer),
         Layer.provide(defaultServerSettingsLayer),
+        Layer.provide(McpConfigServiceLive),
         Layer.provide(AnalyticsService.layerTest),
       );
 
@@ -834,6 +841,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
         Layer.provide(Layer.succeed(ProviderAdapterRegistry, firstRegistry)),
         Layer.provide(firstDirectoryLayer),
         Layer.provide(defaultServerSettingsLayer),
+        Layer.provide(McpConfigServiceLive),
         Layer.provide(AnalyticsService.layerTest),
       );
 
@@ -867,6 +875,7 @@ routing.layer("ProviderServiceLive routing", (it) => {
         Layer.provide(Layer.succeed(ProviderAdapterRegistry, secondRegistry)),
         Layer.provide(secondDirectoryLayer),
         Layer.provide(defaultServerSettingsLayer),
+        Layer.provide(McpConfigServiceLive),
         Layer.provide(AnalyticsService.layerTest),
       );
 

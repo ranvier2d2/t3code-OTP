@@ -1342,6 +1342,24 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
         rollbackThread,
         stopAll,
         listModels,
+        translateMcpConfig: (config) =>
+          Effect.succeed(
+            config.servers.length > 0
+              ? {
+                  mcp_config: {
+                    version: config.version,
+                    servers: config.servers
+                      .filter((s) => s.enabled)
+                      .map((s) => ({
+                        name: s.name,
+                        command: s.command,
+                        args: s.args,
+                        ...(s.env ? { env: s.env } : {}),
+                      })),
+                  },
+                }
+              : null,
+          ),
         streamEvents: Stream.fromQueue(runtimeEventQueue),
       } satisfies HarnessClientAdapterShape;
     }),

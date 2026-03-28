@@ -91,6 +91,7 @@ defmodule Harness.Providers.CodexSession do
     :codex_thread_id,
     :binary_path,
     :codex_home,
+    :mcp_config,
     account: nil,
     next_id: 1,
     pending: %{},
@@ -154,7 +155,8 @@ defmodule Harness.Providers.CodexSession do
       params: params,
       buffer: "",
       binary_path: binary_path,
-      codex_home: codex_home
+      codex_home: codex_home,
+      mcp_config: Map.get(params, "mcp_config")
     }
 
     # Version check before spawning

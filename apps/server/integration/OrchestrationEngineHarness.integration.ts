@@ -63,6 +63,7 @@ import {
   type OrchestrationRuntimeReceipt,
 } from "../src/orchestration/Services/RuntimeReceiptBus.ts";
 
+import { McpConfigServiceLive } from "../src/provider/Layers/McpConfig.ts";
 import {
   makeTestProviderAdapterHarness,
   type TestProviderAdapterHarness,
@@ -278,11 +279,13 @@ export const makeOrchestrationIntegrationHarness = (
       ? makeProviderServiceLive().pipe(
           Layer.provide(providerSessionDirectoryLayer),
           Layer.provide(realCodexRegistry),
+          Layer.provide(McpConfigServiceLive),
           Layer.provide(AnalyticsService.layerTest),
         )
       : makeProviderServiceLive().pipe(
           Layer.provide(providerSessionDirectoryLayer),
           Layer.provide(fakeRegistry!),
+          Layer.provide(McpConfigServiceLive),
           Layer.provide(AnalyticsService.layerTest),
         );
 

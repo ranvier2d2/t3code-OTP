@@ -1624,6 +1624,21 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
       listSessions,
       hasSession,
       stopAll,
+      translateMcpConfig: (config) =>
+        Effect.succeed(
+          config.servers.length > 0
+            ? {
+                mcpServers: config.servers
+                  .filter((s) => s.enabled)
+                  .map((s) => ({
+                    name: s.name,
+                    command: s.command,
+                    args: s.args,
+                    ...(s.env ? { env: s.env } : {}),
+                  })),
+              }
+            : null,
+        ),
       streamEvents: Stream.fromQueue(runtimeEventQueue),
     } satisfies CodexAdapterShape;
   });
