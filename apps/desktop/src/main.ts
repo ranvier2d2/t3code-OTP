@@ -1444,7 +1444,20 @@ async function bootstrap(): Promise<void> {
     Effect.runPromise,
   );
   writeDesktopLogHeader(`reserved backend port via NetService port=${backendPort}`);
+
   backendAuthToken = Crypto.randomBytes(24).toString("hex");
+
+  // Write port + auth token so external scripts (council-dispatch, etc.) can discover the server
+  try {
+    FS.mkdirSync(BASE_DIR, { recursive: true });
+    FS.writeFileSync(Path.join(BASE_DIR, "desktop-port"), String(backendPort), "utf-8");
+    FS.writeFileSync(Path.join(BASE_DIR, "desktop-token"), backendAuthToken, {
+      encoding: "utf-8",
+      mode: 0o600,
+    });
+  } catch {
+    // Non-fatal — scripts just won't auto-discover the port/token
+  }
   const baseUrl = `ws://127.0.0.1:${backendPort}`;
   backendWsUrl = `${baseUrl}/?token=${encodeURIComponent(backendAuthToken)}`;
   writeDesktopLogHeader(`bootstrap resolved websocket endpoint baseUrl=${baseUrl}`);
