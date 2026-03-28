@@ -45,7 +45,7 @@ export interface T3ClientOptions {
 // ---------------------------------------------------------------------------
 
 export class T3Client {
-  private ws!: WebSocket;
+  private ws: WebSocket | undefined;
   private pending = new Map<string, PendingRequest>();
   private pushListeners: Array<(event: PushEvent) => void> = [];
   private readonly port: number;
@@ -64,7 +64,13 @@ export class T3Client {
 
   /** Resolve port: T3CODE_PORT env > ~/.t3/desktop-port file > 3780 default */
   private static resolvePort(): number {
-    if (process.env.T3CODE_PORT) return Number(process.env.T3CODE_PORT);
+    const envPortRaw = process.env.T3CODE_PORT?.trim();
+    if (envPortRaw) {
+      const envPort = parseInt(envPortRaw, 10);
+      if (Number.isInteger(envPort) && envPort > 0 && envPort <= 65_535) {
+        return envPort;
+      }
+    }
     try {
       const content = fs.readFileSync(path.join(T3Client.baseDir, "desktop-port"), "utf-8").trim();
       const port = parseInt(content, 10);
@@ -91,15 +97,27 @@ export class T3Client {
    */
   async connect(): Promise<Record<string, unknown>> {
     const base = `ws://127.0.0.1:${this.port}`;
-    const url = this.authToken ? `${base}?token=${this.authToken}` : base;
+    const url = this.authToken
+      ? `${base}?token=${encodeURIComponent(this.authToken)}`
+      : base;
 
     return new Promise((resolve, reject) => {
       let settled = false;
+
+      const handshakeTimer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          this.ws?.close();
+          reject(new Error(`Timed out waiting for server.welcome (${this.requestTimeout / 1000}s)`));
+        }
+      }, this.requestTimeout);
+
       this.ws = new WebSocket(url);
 
       this.ws.on("error", (err) => {
         if (!settled) {
           settled = true;
+          clearTimeout(handshakeTimer);
           reject(err);
         }
       });
@@ -116,6 +134,7 @@ export class T3Client {
         if (msg.type === "push" && msg.channel) {
           if (msg.channel === "server.welcome") {
             settled = true;
+            clearTimeout(handshakeTimer);
             resolve(msg.data as Record<string, unknown>);
             return;
           }
@@ -157,6 +176,7 @@ export class T3Client {
       this.ws.on("close", () => {
         if (!settled) {
           settled = true;
+          clearTimeout(handshakeTimer);
           reject(new Error("WebSocket closed before server.welcome"));
         }
         for (const [, p] of this.pending) {
@@ -187,8 +207,20 @@ export class T3Client {
           : { _tag: method };
 
     return new Promise((resolve, reject) => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        reject(new Error("WebSocket is not open"));
+        return;
+      }
+
       this.pending.set(id, { resolve, reject });
-      this.ws.send(JSON.stringify({ id, body }));
+
+      try {
+        this.ws.send(JSON.stringify({ id, body }));
+      } catch (err) {
+        this.pending.delete(id);
+        reject(err instanceof Error ? err : new Error(String(err)));
+        return;
+      }
 
       setTimeout(() => {
         if (this.pending.has(id)) {
@@ -209,6 +241,12 @@ export class T3Client {
 
   /** Close the WebSocket connection. */
   disconnect() {
-    this.ws.close();
+    if (
+      this.ws &&
+      (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)
+    ) {
+      this.ws.close();
+    }
+    this.ws = undefined;
   }
 }
