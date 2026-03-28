@@ -106,7 +106,9 @@ export class T3Client {
         if (!settled) {
           settled = true;
           this.ws?.close();
-          reject(new Error(`Timed out waiting for server.welcome (${this.requestTimeout / 1000}s)`));
+          reject(
+            new Error(`Timed out waiting for server.welcome (${this.requestTimeout / 1000}s)`),
+          );
         }
       }, this.requestTimeout);
 
