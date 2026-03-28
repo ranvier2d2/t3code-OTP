@@ -1401,6 +1401,7 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
                   "codex",
                   input.threadId,
                 );
+                fs.rmSync(generatedDir, { recursive: true, force: true });
                 const generatedHomePath = path.join(generatedDir, "home");
                 fs.mkdirSync(generatedHomePath, { recursive: true });
                 if (
