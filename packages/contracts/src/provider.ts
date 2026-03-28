@@ -24,6 +24,23 @@ import {
   RuntimeMode,
 } from "./orchestration";
 
+/**
+ * Provider session state machine:
+ *
+ *   ┌────────────┐
+ *   │ connecting  │──→ ready ──→ running ──→ closed
+ *   └────────────┘       │         │
+ *        │               │         │
+ *        └───────────────┴─────────┴──→ error ──→ closed
+ *
+ * Transitions:
+ *   connecting → ready    : provider handshake complete
+ *   ready      → running  : first turn sent
+ *   running    → ready    : turn completed (idle)
+ *   running    → closed   : session stopped normally
+ *   *          → error    : unrecoverable provider error
+ *   error      → closed   : cleanup complete
+ */
 const ProviderSessionStatus = Schema.Literals([
   "connecting",
   "ready",

@@ -119,8 +119,18 @@ export function makeServerProviderLayer(options?: {
       ? (["cursor", "opencode"] as const)
       : (["codex", "cursor", "opencode"] as const);
 
+    // Determine the adapter registry layer based on configuration.
+    //
+    // Three paths:
+    //   A) harnessPort configured — codex (unless legacy), cursor, opencode via harness
+    //   B) legacy codex (T3CODE_CODEX_LEGACY=1) without harness — codex + claude only
+    //   C) no harness port + harness required (default codex path) — error gracefully
+
+    const harnessAdapterLayer = options?.harnessAdapterLayer ?? makeHarnessClientAdapterLive();
+
     const adapterRegistryLayer = harnessEnabled
-      ? Layer.effect(
+      ? // Path A: harness available — route harness providers through it
+        Layer.effect(
           ProviderAdapterRegistry,
           Effect.gen(function* () {
             const claudeAdapter = yield* ClaudeAdapter;
@@ -162,17 +172,63 @@ export function makeServerProviderLayer(options?: {
           Layer.provide(codexAdapterLayer),
           Layer.provide(claudeAdapterLayer),
           Layer.provideMerge(
-            (options?.harnessAdapterLayer ?? makeHarnessClientAdapterLive()).pipe(
-              Layer.provideMerge(McpConfigServiceLive),
-            ),
+            harnessAdapterLayer.pipe(Layer.provideMerge(McpConfigServiceLive)),
           ),
           Layer.provideMerge(providerSessionDirectoryLayer),
         )
-      : ProviderAdapterRegistryLive.pipe(
-          Layer.provide(codexAdapterLayer),
-          Layer.provide(claudeAdapterLayer),
-          Layer.provideMerge(providerSessionDirectoryLayer),
-        );
+      : useLegacyCodex
+        ? // Path B: legacy codex, no harness — codex + claude only
+          ProviderAdapterRegistryLive.pipe(
+            Layer.provide(codexAdapterLayer),
+            Layer.provide(claudeAdapterLayer),
+            Layer.provideMerge(providerSessionDirectoryLayer),
+          )
+        : // Path C: harness required but not configured — error gracefully
+          Layer.effect(
+            ProviderAdapterRegistry,
+            Effect.gen(function* () {
+              yield* Effect.logError(
+                "[codex-harness-cutover] Harness port is not configured but Codex requires " +
+                  "the harness (default path). Set T3CODE_CODEX_LEGACY=1 to use the legacy " +
+                  "direct adapter, or configure harnessPort.",
+              );
+              const claudeAdapter = yield* ClaudeAdapter;
+              type Adapter = ProviderAdapterShape<ProviderAdapterError>;
+              const byProvider = new Map<string, Adapter>();
+              byProvider.set("claudeAgent", claudeAdapter);
+
+              return {
+                getByProvider: (provider: string) => {
+                  const adapter = byProvider.get(provider);
+                  if (!adapter) {
+                    return Effect.fail(
+                      new ProviderUnsupportedError({
+                        provider,
+                        ...(provider === "codex" ||
+                        provider === "cursor" ||
+                        provider === "opencode"
+                          ? {
+                              cause: new Error(
+                                `Harness port is not configured. Provider '${provider}' requires the Elixir harness. ` +
+                                  `Set T3CODE_CODEX_LEGACY=1 to use the legacy direct adapter, or configure harnessPort.`,
+                              ),
+                            }
+                          : {}),
+                      }),
+                    );
+                  }
+                  return Effect.succeed(adapter);
+                },
+                listProviders: () =>
+                  Effect.sync(
+                    () => Array.from(byProvider.keys()) as unknown as readonly ProviderKind[],
+                  ),
+              };
+            }),
+          ).pipe(
+            Layer.provide(claudeAdapterLayer),
+            Layer.provideMerge(providerSessionDirectoryLayer),
+          );
 
     return makeProviderServiceLive(
       canonicalEventLogger ? { canonicalEventLogger } : undefined,
