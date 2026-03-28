@@ -9,7 +9,18 @@ defmodule Harness.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
-      deps: deps()
+      deps: deps(),
+      releases: releases()
+    ]
+  end
+
+  defp releases do
+    [
+      harness: [
+        include_erts: true,
+        strip_beams: true,
+        cookie: "t3code_harness_desktop_local"
+      ]
     ]
   end
 

@@ -455,6 +455,13 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
     directories: {
       buildResources: "apps/desktop/resources",
     },
+    extraResources: [
+      {
+        from: "harness-rel",
+        to: "harness-rel",
+        filter: ["**/*"],
+      },
+    ],
   };
   const publishConfig = resolveGitHubPublishConfig();
   if (publishConfig) {
@@ -611,6 +618,17 @@ const buildDesktopArtifact = Effect.fn("buildDesktopArtifact")(function* (
   yield* fs.copy(distDirs.desktopDist, path.join(stageAppDir, "apps/desktop/dist-electron"));
   yield* fs.copy(distDirs.desktopResources, stageResourcesDir);
   yield* fs.copy(distDirs.serverDist, path.join(stageAppDir, "apps/server/dist"));
+
+  // Stage the Elixir harness release if it exists (built separately via mix release)
+  const harnessRelDir = path.join(repoRoot, "apps/harness/_build/prod/rel/harness");
+  if (yield* fs.exists(harnessRelDir)) {
+    yield* Effect.log("[desktop-artifact] Staging harness release...");
+    yield* fs.copy(harnessRelDir, path.join(stageAppDir, "harness-rel"));
+  } else {
+    yield* Effect.log(
+      "[desktop-artifact] No harness release found at apps/harness/_build/prod/rel/harness — skipping (Cursor/OpenCode will require external harness)",
+    );
+  }
 
   yield* assertPlatformBuildResources(options.platform, stageResourcesDir, options.verbose);
 

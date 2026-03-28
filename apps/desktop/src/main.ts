@@ -81,6 +81,9 @@ type DesktopUpdateErrorContext = DesktopUpdateState["errorContext"];
 
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess.ChildProcess | null = null;
+let harnessProcess: ChildProcess.ChildProcess | null = null;
+let harnessPort = 0;
+let harnessSecret = "";
 let backendPort = 0;
 let backendAuthToken = "";
 let backendWsUrl = "";
@@ -943,6 +946,98 @@ function scheduleBackendRestart(reason: string): void {
   }, delayMs);
 }
 
+// ---------------------------------------------------------------------------
+// Elixir harness lifecycle
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the path to the bundled harness release binary.
+ * In packaged mode: Contents/Resources/harness-rel/bin/harness
+ * In development: falls back to T3CODE_HARNESS_PORT env var (no bundled release).
+ */
+function resolveHarnessReleasePath(): string | null {
+  const relPath = Path.join(process.resourcesPath, "harness-rel", "bin", "harness");
+  if (FS.existsSync(relPath)) return relPath;
+  return null;
+}
+
+/**
+ * Start the bundled Elixir harness as a child process.
+ * If no bundled release exists, falls back to T3CODE_HARNESS_PORT env var.
+ * Returns true if harness is available (bundled or external).
+ */
+function startHarness(): boolean {
+  // Check for external harness first (dev override)
+  const externalPort = process.env.T3CODE_HARNESS_PORT;
+  if (externalPort) {
+    const parsed = parseInt(externalPort, 10);
+    if (!Number.isNaN(parsed)) {
+      harnessPort = parsed;
+      harnessSecret = process.env.T3CODE_HARNESS_SECRET ?? "dev-harness-secret";
+      writeDesktopLogHeader(`harness using external port=${harnessPort}`);
+      return true;
+    }
+  }
+
+  const releasePath = resolveHarnessReleasePath();
+  if (!releasePath) {
+    writeDesktopLogHeader("harness release not bundled, skipping");
+    return false;
+  }
+
+  harnessPort = 4321;
+  harnessSecret = Crypto.randomBytes(16).toString("hex");
+
+  const child = ChildProcess.spawn(releasePath, ["start"], {
+    env: {
+      ...process.env,
+      T3CODE_HARNESS_PORT: String(harnessPort),
+      T3CODE_HARNESS_SECRET: harnessSecret,
+      SECRET_KEY_BASE: Crypto.randomBytes(32).toString("hex"),
+      T3CODE_HOME: BASE_DIR,
+      // Prevent BEAM from trying to connect to other nodes
+      RELEASE_DISTRIBUTION: "none",
+      RELEASE_NODE: "harness@127.0.0.1",
+    },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+
+  harnessProcess = child;
+  writeDesktopLogHeader(`harness started pid=${child.pid ?? "unknown"} port=${harnessPort}`);
+
+  child.stdout?.on("data", (data: Buffer) => {
+    const line = data.toString().trim();
+    if (line) writeDesktopLogHeader(`[harness:out] ${line}`);
+  });
+
+  child.stderr?.on("data", (data: Buffer) => {
+    const line = data.toString().trim();
+    if (line) writeDesktopLogHeader(`[harness:err] ${line}`);
+  });
+
+  child.on("exit", (code, signal) => {
+    writeDesktopLogHeader(`harness exited code=${code ?? "null"} signal=${signal ?? "null"}`);
+    harnessProcess = null;
+  });
+
+  return true;
+}
+
+function stopHarness(): void {
+  const child = harnessProcess;
+  harnessProcess = null;
+  if (!child) return;
+
+  if (child.exitCode === null && child.signalCode === null) {
+    child.kill("SIGTERM");
+    setTimeout(() => {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill("SIGKILL");
+      }
+    }, 2_000).unref();
+  }
+}
+
 function startBackend(): void {
   if (isQuitting || backendProcess) return;
 
@@ -974,13 +1069,11 @@ function startBackend(): void {
       t3Home: BASE_DIR,
       authToken: backendAuthToken,
     };
-    const harnessPort = process.env.T3CODE_HARNESS_PORT;
-    if (harnessPort) {
-      const parsed = parseInt(harnessPort, 10);
-      if (!Number.isNaN(parsed)) bootstrapConfig.harnessPort = parsed;
+    // Forward harness connection info (set by startHarness or env var)
+    if (harnessPort > 0) {
+      bootstrapConfig.harnessPort = harnessPort;
+      bootstrapConfig.harnessSecret = harnessSecret;
     }
-    const harnessSecret = process.env.T3CODE_HARNESS_SECRET;
-    if (harnessSecret) bootstrapConfig.harnessSecret = harnessSecret;
 
     bootstrapStream.write(`${JSON.stringify(bootstrapConfig)}\n`);
     bootstrapStream.end();
@@ -1358,6 +1451,8 @@ async function bootstrap(): Promise<void> {
 
   registerIpcHandlers();
   writeDesktopLogHeader("bootstrap ipc handlers registered");
+  startHarness();
+  writeDesktopLogHeader("bootstrap harness start requested");
   startBackend();
   writeDesktopLogHeader("bootstrap backend start requested");
   mainWindow = createWindow();
@@ -1369,6 +1464,7 @@ app.on("before-quit", () => {
   writeDesktopLogHeader("before-quit received");
   clearUpdatePollTimer();
   stopBackend();
+  stopHarness();
   restoreStdIoCapture?.();
 });
 

@@ -4,8 +4,19 @@ import Config
 harness_port = String.to_integer(System.get_env("T3CODE_HARNESS_PORT", "4321"))
 harness_secret = System.get_env("T3CODE_HARNESS_SECRET", "dev-harness-secret")
 
+# Resolve database path: T3CODE_HOME/harness.db or default priv/data/harness.db
+harness_db_path =
+  case System.get_env("T3CODE_HOME") do
+    nil -> nil
+    home -> Path.join([home, "harness", "harness.db"])
+  end
+
 config :harness,
   harness_secret: harness_secret
+
+if harness_db_path do
+  config :harness, Harness.Storage, db_path: harness_db_path
+end
 
 if config_env() != :test do
   config :harness, HarnessWeb.Endpoint,
