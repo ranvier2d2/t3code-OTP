@@ -45,7 +45,7 @@ export function codexTomlFromResolved(config: ResolvedMcpConfig): string {
     "# This file contains the MCP overlay for a single provider session.",
   ];
   const blocks = config.servers.map(codexServerBlock);
-  return [...header, "", ...blocks].join("\n");
+  return [...header, "", ...blocks, ""].join("\n");
 }
 
 export function openCodeConfigFromResolved(config: ResolvedMcpConfig): string {

@@ -1120,9 +1120,13 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
                             force: true,
                           });
                         }
+                        const configTomlPath = path.join(generatedHomePath, "config.toml");
+                        const existingConfig = fs.existsSync(configTomlPath)
+                          ? fs.readFileSync(configTomlPath, "utf8")
+                          : "";
                         fs.writeFileSync(
-                          path.join(generatedHomePath, "config.toml"),
-                          codexTomlFromResolved(resolvedMcp),
+                          configTomlPath,
+                          existingConfig + codexTomlFromResolved(resolvedMcp),
                           "utf8",
                         );
                         return {
