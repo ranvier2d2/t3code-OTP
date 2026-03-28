@@ -2,6 +2,98 @@ import { Schema } from "effect";
 
 import type { CheckpointServiceError } from "../checkpointing/Errors.ts";
 
+// ---------------------------------------------------------------------------
+// Error taxonomy
+// ---------------------------------------------------------------------------
+
+/**
+ * Error category for provider errors.
+ *
+ * - `"transient"` — temporary failure that may succeed on retry (network timeout, rate-limit).
+ * - `"permanent"` — unrecoverable error (bad request, auth failure, missing resource).
+ * - `"configuration"` — misconfigured provider or environment (wrong API key, missing binary).
+ * - `"unavailable"` — provider is down or unreachable (graceful degradation path).
+ */
+export type ProviderErrorCategory = "transient" | "permanent" | "configuration" | "unavailable";
+
+/**
+ * Classify a provider error into a recovery-actionable category.
+ *
+ * Recovery strategies per category:
+ * - transient      -> retry with exponential backoff
+ * - permanent      -> fail immediately and report to the user
+ * - configuration  -> re-resolve configuration / prompt user to fix settings
+ * - unavailable    -> degrade gracefully (e.g. mark provider as offline)
+ */
+export function classifyProviderError(
+  error:
+    | ProviderAdapterError
+    | ProviderValidationError
+    | ProviderUnsupportedError
+    | ProviderSessionNotFoundError
+    | ProviderSessionDirectoryPersistenceError,
+): ProviderErrorCategory {
+  const tag = (error as { readonly _tag: string })._tag;
+
+  switch (tag) {
+    case "ProviderAdapterRequestError": {
+      // Request errors are generally transient (timeout, network) unless the
+      // detail indicates a permanent issue.
+      const detail = ((error as ProviderAdapterRequestError).detail ?? "").toLowerCase();
+      if (
+        detail.includes("timeout") ||
+        detail.includes("rate limit") ||
+        detail.includes("econnreset") ||
+        detail.includes("econnrefused") ||
+        detail.includes("socket hang up")
+      ) {
+        return "transient";
+      }
+      if (
+        detail.includes("not found") ||
+        detail.includes("unauthorized") ||
+        detail.includes("forbidden")
+      ) {
+        return "permanent";
+      }
+      // Default request errors to transient — safer to retry.
+      return "transient";
+    }
+
+    case "ProviderAdapterProcessError": {
+      const detail = ((error as ProviderAdapterProcessError).detail ?? "").toLowerCase();
+      if (
+        detail.includes("not found") ||
+        detail.includes("enoent") ||
+        detail.includes("permission denied")
+      ) {
+        return "configuration";
+      }
+      if (detail.includes("crashed") || detail.includes("signal")) {
+        return "unavailable";
+      }
+      return "transient";
+    }
+
+    case "ProviderAdapterValidationError":
+    case "ProviderAdapterSessionNotFoundError":
+    case "ProviderAdapterSessionClosedError":
+    case "ProviderValidationError":
+    case "ProviderSessionNotFoundError":
+      return "permanent";
+
+    case "ProviderUnsupportedError":
+      return "configuration";
+
+    case "ProviderSessionDirectoryPersistenceError":
+      return "transient";
+
+    default:
+      // Fallback — treat unknown errors as transient to allow retry.
+      return "transient";
+  }
+}
+
 /**
  * ProviderAdapterValidationError - Invalid adapter API input.
  */

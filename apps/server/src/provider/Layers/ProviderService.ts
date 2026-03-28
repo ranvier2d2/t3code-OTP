@@ -7,6 +7,22 @@
  *
  * It does not implement provider protocol details (adapter concern).
  *
+ * ## Error Recovery Strategy
+ *
+ * Provider errors are classified into four categories (see `classifyProviderError`
+ * in `../Errors.ts`). The orchestration layer applies the following strategies:
+ *
+ * | Category        | Strategy                                                      |
+ * |-----------------|---------------------------------------------------------------|
+ * | `transient`     | Retry with exponential backoff (up to 3 attempts).            |
+ * | `permanent`     | Fail immediately — surface the error to the caller.           |
+ * | `configuration` | Re-resolve provider configuration; prompt user to fix.        |
+ * | `unavailable`   | Degrade gracefully — mark provider offline, suggest fallback. |
+ *
+ * Currently, the service lets errors propagate to transports which surface them
+ * in the UI. The classification function is available for future middleware that
+ * intercepts errors and applies the strategies above automatically.
+ *
  * @module ProviderServiceLive
  */
 import {
@@ -24,7 +40,11 @@ import {
 } from "@t3tools/contracts";
 import { Cause, Effect, Layer, Option, PubSub, Queue, Schema, SchemaIssue, Stream } from "effect";
 
-import { ProviderValidationError } from "../Errors.ts";
+import {
+  classifyProviderError,
+  type ProviderErrorCategory,
+  ProviderValidationError,
+} from "../Errors.ts";
 import { ProviderAdapterRegistry } from "../Services/ProviderAdapterRegistry.ts";
 import { ProviderService, type ProviderServiceShape } from "../Services/ProviderService.ts";
 import {
@@ -54,6 +74,24 @@ function toValidationError(
     operation,
     issue,
     ...(cause !== undefined ? { cause } : {}),
+  });
+}
+
+/**
+ * Effect that classifies a provider error and logs the category for observability.
+ *
+ * Designed for use in `Effect.tapError` pipelines.
+ */
+function logClassifiedError(
+  operation: string,
+  error: Parameters<typeof classifyProviderError>[0],
+): Effect.Effect<void> {
+  const category: ProviderErrorCategory = classifyProviderError(error);
+  return Effect.logWarning("provider error classified", {
+    operation,
+    errorTag: (error as { readonly _tag?: string })._tag ?? "unknown",
+    category,
+    message: error.message,
   });
 }
 
