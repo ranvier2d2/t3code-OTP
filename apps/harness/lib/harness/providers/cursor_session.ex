@@ -344,6 +344,7 @@ defmodule Harness.Providers.CursorSession do
     # Since terminate runs in the same process as handle_info, the flag is visible
     # to any messages processed after Port.close sends the exit notification.
     state = %{state | stopped: true}
+    emit_event(state, :session, "session/closed", %{})
     maybe_complete_turn(state, "completed")
     cancel_all_pending(state)
 

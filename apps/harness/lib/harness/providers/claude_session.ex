@@ -400,6 +400,7 @@ defmodule Harness.Providers.ClaudeSession do
   @impl true
   def terminate(_reason, state) do
     state = %{state | stopped: true}
+    emit_event(state, :session, "session/closed", %{})
 
     if state.port do
       try do

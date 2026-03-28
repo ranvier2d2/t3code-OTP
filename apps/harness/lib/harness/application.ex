@@ -17,7 +17,7 @@ defmodule Harness.Application do
       HarnessWeb.Endpoint
     ]
 
-    opts = [strategy: :one_for_one, name: Harness.Supervisor]
+    opts = [strategy: :rest_for_one, name: Harness.Supervisor]
     Supervisor.start_link(children, opts)
   end
 

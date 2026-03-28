@@ -473,6 +473,7 @@ defmodule Harness.Providers.OpenCodeSession do
   @impl true
   def terminate(_reason, state) do
     state = %{state | stopped: true}
+    emit_event(state, :session, "session/closed", %{})
 
     # Cancel pending approvals/elicitations so SQLite rows are cleaned up
     cancel_all_pending(state)

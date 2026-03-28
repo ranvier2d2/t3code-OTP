@@ -377,11 +377,11 @@ defmodule Harness.SnapshotServer do
           {:reply, {:ok, seq, events}, state}
 
         {:error, _reason} ->
-          {:reply, {:ok, seq, []}, state}
+          {:reply, {:gap, seq, after_seq}, state}
       end
     catch
       :exit, _ ->
-        {:reply, {:ok, seq, []}, state}
+        {:reply, {:gap, seq, after_seq}, state}
     end
   end
 

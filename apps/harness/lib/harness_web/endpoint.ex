@@ -12,7 +12,30 @@ defmodule HarnessWeb.Endpoint do
     pass: ["application/json"],
     json_decoder: Phoenix.json_library()
 
+  plug :authenticate
   plug :route
+
+  defp authenticate(%{request_path: "/api/" <> _} = conn, _opts) do
+    expected = Application.get_env(:harness, :harness_secret, "dev-harness-secret")
+    conn = Plug.Conn.fetch_query_params(conn)
+
+    secret =
+      case Plug.Conn.get_req_header(conn, "authorization") do
+        ["Bearer " <> token] -> token
+        _ -> conn.query_params["secret"]
+      end
+
+    if secret == expected do
+      conn
+    else
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(401, Jason.encode!(%{ok: false, error: "Unauthorized"}))
+      |> Plug.Conn.halt()
+    end
+  end
+
+  defp authenticate(conn, _opts), do: conn
 
   defp route(%{request_path: "/api/snapshot"} = conn, _opts) do
     snapshot = Harness.SnapshotServer.get_snapshot()

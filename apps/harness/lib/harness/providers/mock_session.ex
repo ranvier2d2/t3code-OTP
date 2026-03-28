@@ -195,6 +195,7 @@ defmodule Harness.Providers.MockSession do
   @impl true
   def terminate(_reason, state) do
     state = %{state | stopping: true}
+    emit_event(state, :session, "session/closed", %{})
 
     if state.port do
       try do
