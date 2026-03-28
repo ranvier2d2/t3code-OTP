@@ -1515,6 +1515,7 @@ if (process.platform !== "win32") {
     isQuitting = true;
     writeDesktopLogHeader("SIGINT received");
     clearUpdatePollTimer();
+    stopHarness();
     stopBackend();
     restoreStdIoCapture?.();
     app.quit();
@@ -1525,6 +1526,7 @@ if (process.platform !== "win32") {
     isQuitting = true;
     writeDesktopLogHeader("SIGTERM received");
     clearUpdatePollTimer();
+    stopHarness();
     stopBackend();
     restoreStdIoCapture?.();
     app.quit();
