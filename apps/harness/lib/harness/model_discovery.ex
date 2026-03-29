@@ -127,8 +127,8 @@ defmodule Harness.ModelDiscovery do
   # Parses output of `cursor agent --list-models`:
   #
   # auto - Auto  (current)
-  # gpt-5.4-high - GPT-5.4 1M High
-  # claude-4.6-opus-high-thinking - Opus 4.6 1M Thinking  (default)
+  # gpt-5.3-codex - GPT-5.3 Codex
+  # composer-2 - Composer 2  (default)
   #
   # Lines: "slug - Display Name" with optional (current)/(default) suffix
 
@@ -158,6 +158,9 @@ defmodule Harness.ModelDiscovery do
   # One slug per line, format: "provider/model" (e.g., "opencode/big-pickle")
   # Clean output, no ANSI codes.
 
+  # Well-known acronyms that should be uppercased in display names.
+  @known_acronyms ~w(gpt glm mimo llm vl moe zai ai)
+
   defp parse_opencode_models(output) do
     models =
       output
@@ -165,20 +168,33 @@ defmodule Harness.ModelDiscovery do
       |> Enum.map(&String.trim/1)
       |> Enum.filter(&(&1 =~ ~r/^[\w\-]+\/[\w\-\.]+$/))
       |> Enum.map(fn slug ->
-        # Derive a human name from the slug: "opencode/big-pickle" → "Big Pickle"
-        name =
-          slug
-          |> String.split("/")
-          |> List.last()
-          |> String.replace("-", " ")
-          |> String.split(" ")
-          |> Enum.map(&String.capitalize/1)
-          |> Enum.join(" ")
+        # Derive a human name from the slug, preserving the provider prefix.
+        # "zai-coding-plan/glm-4.5" → "ZAI Coding Plan — GLM 4.5"
+        # "opencode/big-pickle"     → "OpenCode — Big Pickle"
+        [provider_part | rest] = String.split(slug, "/")
+        model_part = Enum.join(rest, "/")
 
-        %{"slug" => slug, "name" => name}
+        provider_name = humanize_segment(provider_part)
+        model_name = humanize_segment(model_part)
+
+        %{"slug" => slug, "name" => "#{provider_name} — #{model_name}"}
       end)
 
     {:ok, models}
+  end
+
+  defp humanize_segment(segment) do
+    segment
+    |> String.replace("-", " ")
+    |> String.split(" ")
+    |> Enum.map(fn word ->
+      if String.downcase(word) in @known_acronyms do
+        String.upcase(word)
+      else
+        String.capitalize(word)
+      end
+    end)
+    |> Enum.join(" ")
   end
 
   # Strip ANSI escape codes from CLI output
