@@ -11,7 +11,6 @@ defmodule Harness.Providers.CursorSession do
   @behaviour Harness.Providers.ProviderBehaviour
 
   use GenServer, restart: :temporary
-  @behaviour Harness.ProviderSession
 
   alias Harness.Event
 
@@ -82,6 +81,7 @@ defmodule Harness.Providers.CursorSession do
     GenServer.stop(pid, :normal)
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def wait_for_ready(_pid, _timeout \\ 30_000) do
     # Cursor is ready immediately — spawns process on send_turn, not in init.
     :ok

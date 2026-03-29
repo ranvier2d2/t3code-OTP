@@ -17,7 +17,6 @@ defmodule Harness.Providers.ClaudeSession do
   @behaviour Harness.Providers.ProviderBehaviour
 
   use GenServer, restart: :temporary
-  @behaviour Harness.ProviderSession
 
   alias Harness.Event
 
@@ -88,6 +87,7 @@ defmodule Harness.Providers.ClaudeSession do
     GenServer.stop(pid, :normal)
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def wait_for_ready(_pid, _timeout \\ 30_000) do
     # Unlike CodexSession which starts a persistent process in init,
     # ClaudeSession spawns the CLI process lazily on each send_turn.

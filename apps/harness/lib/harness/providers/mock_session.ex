@@ -11,8 +11,8 @@ defmodule Harness.Providers.MockSession do
     - deltaSizeKb: size of each delta in KB (default: 1)
     - delayMs: delay between deltas in ms (default: 10)
   """
+  @behaviour Harness.Providers.ProviderBehaviour
   use GenServer, restart: :temporary
-  @behaviour Harness.ProviderSession
 
   alias Harness.JsonRpc
   alias Harness.Event
@@ -36,6 +36,7 @@ defmodule Harness.Providers.MockSession do
 
   @request_timeout 30_000
 
+  @impl Harness.Providers.ProviderBehaviour
   def start_link(opts) do
     thread_id = Map.fetch!(opts, :thread_id)
 
@@ -44,16 +45,26 @@ defmodule Harness.Providers.MockSession do
     )
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def send_turn(pid, params), do: GenServer.call(pid, {:send_turn, params}, 60_000)
+  @impl Harness.Providers.ProviderBehaviour
   def interrupt_turn(pid, _tid, _turn_id), do: GenServer.call(pid, :interrupt_turn)
+  @impl Harness.Providers.ProviderBehaviour
   def respond_to_approval(_, _, _), do: :ok
+  @impl Harness.Providers.ProviderBehaviour
   def respond_to_user_input(_, _, _), do: :ok
+  @impl Harness.Providers.ProviderBehaviour
   def read_thread(_, _), do: {:ok, %{}}
+  @impl Harness.Providers.ProviderBehaviour
   def rollback_thread(_, _, _), do: {:ok, %{}}
 
+  @impl Harness.Providers.ProviderBehaviour
   def wait_for_ready(pid, timeout \\ 30_000) do
     GenServer.call(pid, :wait_for_ready, timeout)
   end
+
+  @impl Harness.Providers.ProviderBehaviour
+  def stop(pid), do: GenServer.stop(pid)
 
   @impl true
   def init(opts) do

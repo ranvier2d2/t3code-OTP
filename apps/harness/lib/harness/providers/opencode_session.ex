@@ -38,7 +38,6 @@ defmodule Harness.Providers.OpenCodeSession do
   @behaviour Harness.Providers.ProviderBehaviour
 
   use GenServer, restart: :temporary
-  @behaviour Harness.ProviderSession
 
   alias Harness.Event
 
@@ -118,6 +117,7 @@ defmodule Harness.Providers.OpenCodeSession do
     GenServer.stop(pid, :normal)
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def wait_for_ready(pid, timeout \\ 30_000) do
     GenServer.call(pid, :wait_for_ready, timeout)
   end
