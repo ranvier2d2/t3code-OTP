@@ -13,7 +13,6 @@ import {
   nativeImage,
   nativeTheme,
   protocol,
-  session,
   shell,
 } from "electron";
 import type { MenuItemConstructorOptions } from "electron";

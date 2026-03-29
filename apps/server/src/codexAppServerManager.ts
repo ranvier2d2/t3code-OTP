@@ -1630,6 +1630,7 @@ function assertSupportedCodexCliVersion(input: {
   readonly cwd: string;
   readonly homePath?: string;
 }): void {
+  assertSafeBinaryPath(input.binaryPath);
   const result = spawnSync(input.binaryPath, ["--version"], {
     cwd: input.cwd,
     env: {
