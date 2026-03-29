@@ -332,5 +332,6 @@ defmodule HarnessWeb.HarnessChannel do
   end
 
   defp format_error(reason) when is_binary(reason), do: reason
+  defp format_error({:provider_mismatch, other}), do: "Only supports opencode, got: #{other}"
   defp format_error(reason), do: inspect(reason)
 end

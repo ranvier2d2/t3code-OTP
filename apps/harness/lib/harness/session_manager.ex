@@ -259,7 +259,7 @@ defmodule Harness.SessionManager do
       GenServer.call(pid, :list_models, 15_000)
     end)
     |> case do
-      {:error, "MCP management only supports opencode, got: " <> other} ->
+      {:error, {:provider_mismatch, other}} ->
         {:error, "list_models_from_session only supports opencode, got: #{other}"}
 
       other ->
@@ -320,7 +320,7 @@ defmodule Harness.SessionManager do
         end
 
       [{_pid, other}] ->
-        {:error, "MCP management only supports opencode, got: #{other}"}
+        {:error, {:provider_mismatch, other}}
 
       [] ->
         {:error, "Session not found: #{thread_id}"}
