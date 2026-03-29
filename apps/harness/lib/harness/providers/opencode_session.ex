@@ -1157,13 +1157,10 @@ defmodule Harness.Providers.OpenCodeSession do
 
     case status_type do
       "idle" ->
-        # Complete the turn FIRST, then emit ready state.
-        # This ensures the frontend processes turn/completed before
-        # session/state-changed → ready, avoiding a race where the
-        # sidebar clears "Working" but the turn is still marked active.
-        state = maybe_complete_turn(state, "completed")
-        emit_event(state, :session, "session/state-changed", %{"state" => "ready"})
-        state
+        # Complete the turn — maybe_complete_turn now emits both
+        # turn/completed and session/state-changed → ready internally,
+        # keeping the ordering deterministic.
+        maybe_complete_turn(state, "completed")
 
       "busy" ->
         emit_event(state, :session, "session/state-changed", %{"state" => "running"})
@@ -1287,6 +1284,9 @@ defmodule Harness.Providers.OpenCodeSession do
       },
       "stopReason" => status
     })
+
+    # Emit ready state so the sidebar clears the "Working" badge
+    emit_event(state, :session, "session/state-changed", %{"state" => "ready"})
 
     %{state | turn_state: nil, messages: state.messages ++ [turn]}
   end
