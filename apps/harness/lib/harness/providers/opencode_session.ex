@@ -863,6 +863,7 @@ defmodule Harness.Providers.OpenCodeSession do
 
         item_type = classify_tool_item_type(tool_name)
         detail = extract_tool_detail(part)
+        input = Map.get(tool_state, "input") || %{}
 
         case status do
           "running" ->
@@ -871,6 +872,7 @@ defmodule Harness.Providers.OpenCodeSession do
               "itemType" => item_type,
               "toolName" => tool_name,
               "detail" => detail,
+              "args" => input,
               "turnId" => turn_id
             })
 
@@ -899,15 +901,21 @@ defmodule Harness.Providers.OpenCodeSession do
               "itemType" => item_type,
               "toolName" => tool_name,
               "status" => "completed",
+              "args" => input,
+              "output" => extract_tool_output_structured(part),
               "turnId" => turn_id
             })
 
           "error" ->
+            error_info = Map.get(tool_state, "error", "")
+
             emit_event(state, :notification, "item/completed", %{
               "itemId" => call_id,
               "itemType" => item_type,
               "toolName" => tool_name,
               "status" => "failed",
+              "args" => input,
+              "error" => error_info,
               "turnId" => turn_id
             })
 
@@ -932,6 +940,11 @@ defmodule Harness.Providers.OpenCodeSession do
           "itemType" => "collab_agent_tool_call",
           "toolName" => agent_name,
           "detail" => if(description != "", do: description, else: String.slice(prompt, 0, 100)),
+          "args" => %{
+            "agent" => agent_name,
+            "prompt" => prompt,
+            "description" => description
+          },
           "turnId" => turn_id
         })
 
@@ -953,12 +966,14 @@ defmodule Harness.Providers.OpenCodeSession do
         step_id = Map.get(part, "id") || generate_id()
         tool_name = Map.get(part, "tool") || Map.get(part, "name") || "step"
         description = Map.get(part, "description", "")
+        step_input = Map.get(part, "input") || Map.get(part, "args") || %{}
 
         emit_event(state, :notification, "item/started", %{
           "itemId" => step_id,
           "itemType" => "dynamic_tool_call",
           "toolName" => tool_name,
           "detail" => description,
+          "args" => step_input,
           "turnId" => turn_id
         })
 
@@ -967,12 +982,14 @@ defmodule Harness.Providers.OpenCodeSession do
         # on finish), fall back to a synthetic ID so the UI clears the step.
         step_id = Map.get(part, "id") || generate_id()
         tool_name = Map.get(part, "tool") || Map.get(part, "name") || "step"
+        step_output = Map.get(part, "output") || Map.get(part, "result") || %{}
 
         emit_event(state, :notification, "item/completed", %{
           "itemId" => step_id,
           "itemType" => "dynamic_tool_call",
           "toolName" => tool_name,
           "status" => "completed",
+          "output" => step_output,
           "turnId" => turn_id
         })
 
@@ -1064,9 +1081,10 @@ defmodule Harness.Providers.OpenCodeSession do
         "requestType" => pending.request_type,
         "detail" => pending.detail,
         "args" => %{
+          "toolName" => permission,
           "permission" => permission,
-          "patterns" => Map.get(data, "patterns", []),
-          "metadata" => metadata
+          "input" => metadata,
+          "patterns" => Map.get(data, "patterns", [])
         }
       })
 
@@ -1358,7 +1376,7 @@ defmodule Harness.Providers.OpenCodeSession do
       Map.get(part, "tool")
   end
 
-  # Extract tool output from completed tool state.
+  # Extract tool output as a string for streaming via content/delta.
   # OpenCode stores results in state.output (confirmed via live SSE capture)
   defp extract_tool_output(part) do
     tool_state = get_in(part, ["state"]) || %{}
@@ -1369,6 +1387,21 @@ defmodule Harness.Providers.OpenCodeSession do
       is_binary(output) and output != "" -> output
       is_binary(result) and result != "" -> result
       true -> ""
+    end
+  end
+
+  # Extract structured tool output for item/completed events.
+  # Returns the full output/result in its original form (map, list, or string)
+  # so the UI can render rich tool results (e.g. file diffs, command stdout/stderr).
+  defp extract_tool_output_structured(part) do
+    tool_state = get_in(part, ["state"]) || %{}
+    output = Map.get(tool_state, "output")
+    result = Map.get(tool_state, "result")
+
+    cond do
+      not is_nil(output) and output != "" -> output
+      not is_nil(result) and result != "" -> result
+      true -> nil
     end
   end
 
