@@ -13,6 +13,7 @@ import {
   nativeImage,
   nativeTheme,
   protocol,
+  session,
   shell,
 } from "electron";
 import type { MenuItemConstructorOptions } from "electron";
@@ -1393,6 +1394,29 @@ function createWindow(): BrowserWindow {
       nodeIntegration: false,
       sandbox: true,
     },
+  });
+
+  // Inject Content-Security-Policy headers to mitigate XSS in the renderer.
+  window.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        "Content-Security-Policy": [
+          [
+            "default-src 'self'",
+            `script-src 'self'`,
+            `style-src 'self' 'unsafe-inline'`,
+            `img-src 'self' data: https:`,
+            `font-src 'self' data:`,
+            `connect-src 'self' ws://127.0.0.1:* http://127.0.0.1:* https:`,
+            "object-src 'none'",
+            "base-uri 'self'",
+            "form-action 'self'",
+            "frame-ancestors 'none'",
+          ].join("; "),
+        ],
+      },
+    });
   });
 
   window.webContents.on("context-menu", (event, params) => {

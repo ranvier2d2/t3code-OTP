@@ -16,7 +16,7 @@ defmodule HarnessWeb.Endpoint do
   plug :route
 
   defp authenticate(%{request_path: "/api/" <> _} = conn, _opts) do
-    expected = Application.get_env(:harness, :harness_secret, "dev-harness-secret")
+    expected = Application.get_env(:harness, :harness_secret) || ""
     conn = Plug.Conn.fetch_query_params(conn)
 
     secret =

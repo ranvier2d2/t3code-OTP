@@ -15,8 +15,8 @@
   },
   "dependencies": {
     "effect": "catalog:",
-    "electron": "40.6.0",
-    "electron-updater": "^6.6.2"
+    "electron": "41.1.0",
+    "electron-updater": "^6.8.3"
   },
   "devDependencies": {
     "@t3tools/contracts": "workspace:*",
