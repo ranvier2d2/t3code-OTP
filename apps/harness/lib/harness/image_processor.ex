@@ -111,7 +111,7 @@ defmodule Harness.ImageProcessor do
          mime_type: mime_type,
          base64_data: base64_data,
          data_url: data_url,
-         size_bytes: Map.get(attachment, "sizeBytes", 0),
+         size_bytes: Map.get(attachment, "sizeBytes"),
          name: Map.get(attachment, "name", "unnamed")
        }}
     end
@@ -147,5 +147,9 @@ defmodule Harness.ImageProcessor do
     {:error, {:image_too_large, size, @max_image_bytes}}
   end
 
-  defp validate_size(_), do: :ok
+  defp validate_size(%{"sizeBytes" => size}) when is_integer(size) and size >= 0 do
+    :ok
+  end
+
+  defp validate_size(_), do: {:error, :invalid_size_bytes}
 end

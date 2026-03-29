@@ -138,6 +138,27 @@ defmodule Harness.ImageProcessorTest do
       assert {:error, :invalid_data_url_format} =
                ImageProcessor.parse_attachments([bad, good])
     end
+
+    test "rejects attachment with missing sizeBytes" do
+      attachment = make_attachment() |> Map.delete("sizeBytes")
+      assert {:error, :invalid_size_bytes} = ImageProcessor.parse_attachments([attachment])
+    end
+
+    test "rejects attachment with non-integer sizeBytes" do
+      attachment = make_attachment(%{"sizeBytes" => "1024"})
+      assert {:error, :invalid_size_bytes} = ImageProcessor.parse_attachments([attachment])
+    end
+
+    test "rejects attachment with negative sizeBytes" do
+      attachment = make_attachment(%{"sizeBytes" => -1})
+      assert {:error, :invalid_size_bytes} = ImageProcessor.parse_attachments([attachment])
+    end
+
+    test "accepts attachment with sizeBytes of 0" do
+      attachment = make_attachment(%{"sizeBytes" => 0})
+      assert {:ok, [image]} = ImageProcessor.parse_attachments([attachment])
+      assert image.size_bytes == 0
+    end
   end
 
   # --- to_codex_input/1 ---
