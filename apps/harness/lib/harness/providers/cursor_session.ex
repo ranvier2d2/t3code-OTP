@@ -389,7 +389,9 @@ defmodule Harness.Providers.CursorSession do
 
   # --- Session Creation & Recovery ---
 
-  # Parse resumeCursor JSON to extract the Cursor chatId for --resume
+  # Parse resumeCursor JSON to extract the Cursor chatId for --resume.
+  # Accepts both JSON-string and already-decoded map forms (the session
+  # manager may have decoded the SQLite JSON into an Elixir map — see D4).
   defp extract_resume_session_id(params) do
     case get_in(params, ["resumeCursor"]) do
       nil ->
@@ -402,6 +404,13 @@ defmodule Harness.Providers.CursorSession do
           {:ok, %{"resume" => chat_id}} when is_binary(chat_id) -> chat_id
           _ -> nil
         end
+
+      # Already-decoded map (normalize_resume_cursor or direct map value)
+      %{"cursorChatId" => chat_id} when is_binary(chat_id) ->
+        chat_id
+
+      %{"resume" => chat_id} when is_binary(chat_id) ->
+        chat_id
 
       _ ->
         nil
@@ -554,7 +563,18 @@ defmodule Harness.Providers.CursorSession do
 
   defp handle_stream_message(%{"type" => "system", "subtype" => "init"} = msg, state) do
     session_id = Map.get(msg, "session_id")
-    state = if session_id, do: %{state | resume_session_id: session_id}, else: state
+
+    # Only capture the system/init session_id when we don't already have a
+    # durable chat ID.  The durable ID (from create-chat or resumeCursor) must
+    # stay authoritative for --resume across turns.  The system/init session_id
+    # is a transient per-run value — overwriting the durable ID with it causes
+    # the second turn's --resume to reference a stale/invalid ID.
+    state =
+      if session_id && !state.has_real_chat_id do
+        %{state | resume_session_id: session_id, has_real_chat_id: true}
+      else
+        state
+      end
 
     emit_event(state, :session, "session/configured", %{
       "sessionId" => session_id,

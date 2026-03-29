@@ -1208,6 +1208,12 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
               ...(input.modelSelection?.model !== undefined
                 ? { model: input.modelSelection.model }
                 : {}),
+              ...(input.attachments !== undefined && input.attachments.length > 0
+                ? { attachments: input.attachments }
+                : {}),
+              ...(input.interactionMode !== undefined
+                ? { interactionMode: input.interactionMode }
+                : {}),
             }),
           catch: (cause) =>
             toRequestError(resolveProvider(input.threadId), input.threadId, "turn/start", cause),

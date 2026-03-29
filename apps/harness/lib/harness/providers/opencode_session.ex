@@ -128,6 +128,10 @@ defmodule Harness.Providers.OpenCodeSession do
   def init(opts) do
     params = Map.get(opts, :params, %{})
 
+    # Check for a persisted sessionId from resumeCursor so we can reuse the
+    # existing OpenCode session instead of always starting from scratch.
+    persisted_session_id = extract_persisted_session_id(params)
+
     state = %__MODULE__{
       thread_id: Map.fetch!(opts, :thread_id),
       provider: "opencode",
@@ -135,6 +139,7 @@ defmodule Harness.Providers.OpenCodeSession do
       params: params,
       binary_path: resolve_opencode_binary(opts),
       opencode_port: find_available_port(),
+      opencode_session_id: persisted_session_id,
       mcp_config: Map.get(params, "mcp_config")
     }
 
@@ -164,10 +169,28 @@ defmodule Harness.Providers.OpenCodeSession do
         state = %{state | sse_pid: sse_pid, sse_connected_at: sse_connected_at}
         Logger.info("[H4-TIMING] SSE connect initiated at mono=#{sse_connected_at}ms for thread #{state.thread_id}")
 
-        # Create a session
-        case create_opencode_session(state) do
+        # Reuse a persisted session when available; otherwise create a new one.
+        # This preserves conversation history across session restarts/resumes.
+        {session_result, reused} =
+          if state.opencode_session_id do
+            # Verify the persisted session still exists on the server
+            case verify_opencode_session(state) do
+              :ok ->
+                Logger.info("Reusing persisted OpenCode session #{state.opencode_session_id} for thread #{state.thread_id}")
+                {{:ok, state.opencode_session_id}, true}
+
+              {:error, reason} ->
+                Logger.info("Persisted OpenCode session invalid (#{inspect(reason)}), creating new session for thread #{state.thread_id}")
+                {create_opencode_session(state), false}
+            end
+          else
+            {create_opencode_session(state), false}
+          end
+
+        case session_result do
           {:ok, session_id} ->
             state = %{state | opencode_session_id: session_id, ready: true}
+            _ = reused
 
             emit_event(state, :session, "session/started", %{
               "sessionId" => session_id,
@@ -1221,6 +1244,37 @@ defmodule Harness.Providers.OpenCodeSession do
 
       {:error, reason} ->
         {:error, inspect(reason)}
+    end
+  end
+
+  # Extract a persisted OpenCode sessionId from resumeCursor params.
+  # Accepts both JSON-string and already-decoded map forms (see D4).
+  defp extract_persisted_session_id(params) do
+    case get_in(params, ["resumeCursor"]) do
+      nil ->
+        nil
+
+      cursor when is_binary(cursor) ->
+        case Jason.decode(cursor) do
+          {:ok, %{"sessionId" => id}} when is_binary(id) -> id
+          _ -> nil
+        end
+
+      # Already-decoded map (normalize_resume_cursor or direct map value)
+      %{"sessionId" => id} when is_binary(id) ->
+        id
+
+      _ ->
+        nil
+    end
+  end
+
+  # Verify that a persisted OpenCode session still exists on the server.
+  defp verify_opencode_session(state) do
+    case http_get("#{state.base_url}/session/#{state.opencode_session_id}") do
+      {:ok, %{"id" => _}} -> :ok
+      {:ok, _} -> :ok
+      {:error, reason} -> {:error, reason}
     end
   end
 
