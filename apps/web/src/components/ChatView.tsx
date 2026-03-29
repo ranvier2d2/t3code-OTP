@@ -673,11 +673,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
     [threadActivities],
   );
   const mcpCapable = useMemo(
-    () =>
-      getProviderCapabilities(providerStatuses, selectedProvider).mcpConfig !== "none" ||
-      (threadProvider !== null &&
-        getProviderCapabilities(providerStatuses, threadProvider).mcpConfig !== "none"),
-    [providerStatuses, selectedProvider, threadProvider],
+    () => getProviderCapabilities(providerStatuses, selectedProvider).mcpConfig !== "none",
+    [providerStatuses, selectedProvider],
   );
   const showMcpToggle = mcpCapable;
   const pendingApprovals = useMemo(
