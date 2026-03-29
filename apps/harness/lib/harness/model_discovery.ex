@@ -159,7 +159,7 @@ defmodule Harness.ModelDiscovery do
   # Clean output, no ANSI codes.
 
   # Well-known acronyms that should be uppercased in display names.
-  @known_acronyms ~w(gpt glm mimo llm vl moe)
+  @known_acronyms ~w(gpt glm mimo llm vl moe zai ai)
 
   defp parse_opencode_models(output) do
     models =
