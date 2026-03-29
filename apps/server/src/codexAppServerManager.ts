@@ -1,6 +1,7 @@
 import { type ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
+
 import readline from "node:readline";
 
 import {
@@ -374,6 +375,33 @@ export function resolveCodexModelForAccount(
  * wrapper, leaving the actual command running. Use `taskkill /T` to kill the
  * entire process tree instead.
  */
+/**
+ * Validates that a binary path is safe to execute. Rejects paths containing
+ * shell metacharacters, directory traversal sequences, or null bytes that
+ * could be used for command injection.
+ */
+function assertSafeBinaryPath(binaryPath: string): void {
+  const trimmed = binaryPath.trim();
+  if (trimmed.length === 0) {
+    throw new Error("Binary path must not be empty.");
+  }
+  if (trimmed.includes("\0")) {
+    throw new Error(`Binary path contains null bytes: ${binaryPath}`);
+  }
+  // Reject shell metacharacters that could enable command injection.
+  // On Windows, allow backslashes since they are the standard path separator.
+  const shellMetaChars =
+    process.platform === "win32" ? /[;|&$`(){}[\]!#~<>"'\n\r]/ : /[;|&$`(){}[\]!#~<>"'\\\n\r]/;
+  if (shellMetaChars.test(trimmed)) {
+    throw new Error(`Binary path contains disallowed characters: ${binaryPath}`);
+  }
+  // Reject directory traversal by inspecting raw path segments before normalization.
+  const sep = process.platform === "win32" ? /[\\/]/ : /\//;
+  if (trimmed.split(sep).some((segment) => segment === "..")) {
+    throw new Error(`Binary path contains directory traversal: ${binaryPath}`);
+  }
+}
+
 function killChildTree(child: ChildProcessWithoutNullStreams): void {
   if (process.platform === "win32" && child.pid !== undefined) {
     try {
@@ -548,6 +576,7 @@ export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEve
       };
 
       const codexBinaryPath = input.binaryPath;
+      assertSafeBinaryPath(codexBinaryPath);
       const codexHomePath = input.homePath;
       this.assertSupportedCodexCliVersion({
         binaryPath: codexBinaryPath,
@@ -1601,6 +1630,7 @@ function assertSupportedCodexCliVersion(input: {
   readonly cwd: string;
   readonly homePath?: string;
 }): void {
+  assertSafeBinaryPath(input.binaryPath);
   const result = spawnSync(input.binaryPath, ["--version"], {
     cwd: input.cwd,
     env: {

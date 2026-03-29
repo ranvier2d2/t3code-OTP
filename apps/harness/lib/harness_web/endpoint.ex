@@ -16,7 +16,7 @@ defmodule HarnessWeb.Endpoint do
   plug :route
 
   defp authenticate(%{request_path: "/api/" <> _} = conn, _opts) do
-    expected = Application.get_env(:harness, :harness_secret, "dev-harness-secret")
+    expected = Application.get_env(:harness, :harness_secret) || ""
     conn = Plug.Conn.fetch_query_params(conn)
 
     secret =
@@ -25,7 +25,7 @@ defmodule HarnessWeb.Endpoint do
         _ -> conn.query_params["secret"]
       end
 
-    if is_binary(secret) and byte_size(secret) == byte_size(expected) and
+    if is_binary(secret) and byte_size(secret) > 0 and byte_size(expected) > 0 and
          Plug.Crypto.secure_compare(secret, expected) do
       conn
     else

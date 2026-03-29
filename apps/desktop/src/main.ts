@@ -1395,6 +1395,29 @@ function createWindow(): BrowserWindow {
     },
   });
 
+  // Inject Content-Security-Policy headers to mitigate XSS in the renderer.
+  window.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        "Content-Security-Policy": [
+          [
+            "default-src 'self'",
+            `script-src 'self'`,
+            `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
+            `img-src 'self' data: https:`,
+            `font-src 'self' data: https://fonts.gstatic.com`,
+            `connect-src 'self' ws://127.0.0.1:* ws://localhost:* http://127.0.0.1:* http://localhost:*`,
+            "object-src 'none'",
+            "base-uri 'self'",
+            "form-action 'self'",
+            "frame-ancestors 'none'",
+          ].join("; "),
+        ],
+      },
+    });
+  });
+
   window.webContents.on("context-menu", (event, params) => {
     event.preventDefault();
 
