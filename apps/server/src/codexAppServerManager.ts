@@ -1,7 +1,7 @@
 import { type ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import path from "node:path";
+
 import readline from "node:readline";
 
 import {
@@ -395,9 +395,9 @@ function assertSafeBinaryPath(binaryPath: string): void {
   if (shellMetaChars.test(trimmed)) {
     throw new Error(`Binary path contains disallowed characters: ${binaryPath}`);
   }
-  // Reject directory traversal
-  const normalized = path.normalize(trimmed);
-  if (normalized.includes("..")) {
+  // Reject directory traversal by inspecting raw path segments before normalization.
+  const sep = process.platform === "win32" ? /[\\/]/ : /\//;
+  if (trimmed.split(sep).some((segment) => segment === "..")) {
     throw new Error(`Binary path contains directory traversal: ${binaryPath}`);
   }
 }
