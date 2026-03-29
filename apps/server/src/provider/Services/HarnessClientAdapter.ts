@@ -22,6 +22,26 @@ export interface HarnessClientAdapterShape extends ProviderAdapterShape<Provider
   readonly listModels: (
     provider: string,
   ) => import("effect").Effect.Effect<ReadonlyArray<{ slug: string; name: string }>>;
+  /** Get MCP server status from an active OpenCode session. */
+  readonly mcpStatus: (
+    threadId: string,
+  ) => import("effect").Effect.Effect<Record<string, unknown>, ProviderAdapterError>;
+  /** Add an MCP server configuration to an active OpenCode session. */
+  readonly mcpAdd: (
+    threadId: string,
+    name: string,
+    config: Record<string, unknown>,
+  ) => import("effect").Effect.Effect<Record<string, unknown>, ProviderAdapterError>;
+  /** Connect an MCP server in an active OpenCode session. */
+  readonly mcpConnect: (
+    threadId: string,
+    name: string,
+  ) => import("effect").Effect.Effect<void, ProviderAdapterError>;
+  /** Disconnect an MCP server in an active OpenCode session. */
+  readonly mcpDisconnect: (
+    threadId: string,
+    name: string,
+  ) => import("effect").Effect.Effect<void, ProviderAdapterError>;
 }
 
 /**

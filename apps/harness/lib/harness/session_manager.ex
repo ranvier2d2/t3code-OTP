@@ -212,6 +212,65 @@ defmodule Harness.SessionManager do
     end)
   end
 
+  # --- MCP Management (OpenCode only) ---
+
+  @doc """
+  Get MCP server status from an active OpenCode session.
+  """
+  def mcp_status(thread_id) do
+    with_opencode_session(thread_id, fn pid ->
+      GenServer.call(pid, :mcp_status, 15_000)
+    end)
+  end
+
+  @doc """
+  Add an MCP server configuration to an active OpenCode session.
+  """
+  def mcp_add(thread_id, name, config) do
+    with_opencode_session(thread_id, fn pid ->
+      GenServer.call(pid, {:mcp_add, name, config}, 15_000)
+    end)
+  end
+
+  @doc """
+  Connect an MCP server in an active OpenCode session.
+  """
+  def mcp_connect(thread_id, name) do
+    with_opencode_session(thread_id, fn pid ->
+      GenServer.call(pid, {:mcp_connect, name}, 15_000)
+    end)
+  end
+
+  @doc """
+  Disconnect an MCP server in an active OpenCode session.
+  """
+  def mcp_disconnect(thread_id, name) do
+    with_opencode_session(thread_id, fn pid ->
+      GenServer.call(pid, {:mcp_disconnect, name}, 15_000)
+    end)
+  end
+
+  @doc """
+  Query models from an active OpenCode session via HTTP (GET /provider).
+  Falls back to {:error, reason} if no session is running or the call fails.
+  """
+  def list_models_from_session(thread_id) do
+    case Registry.lookup(Harness.SessionRegistry, thread_id) do
+      [{pid, "opencode"}] ->
+        try do
+          GenServer.call(pid, :list_models, 15_000)
+        catch
+          :exit, reason -> {:error, "GenServer call failed: #{inspect(reason)}"}
+        end
+
+      [{_pid, other}] ->
+        {:error, "list_models_from_session only supports opencode, got: #{other}"}
+
+      [] ->
+        {:error, "Session not found: #{thread_id}"}
+    end
+  end
+
   @doc """
   Get diagnostics from a session's GenServer state.
   Returns a safe subset of internal state for debugging.
@@ -249,6 +308,23 @@ defmodule Harness.SessionManager do
           {:ok, module} -> fun.(pid, module)
           {:error, reason} -> {:error, reason}
         end
+
+      [] ->
+        {:error, "Session not found: #{thread_id}"}
+    end
+  end
+
+  defp with_opencode_session(thread_id, fun) do
+    case Registry.lookup(Harness.SessionRegistry, thread_id) do
+      [{pid, "opencode"}] ->
+        try do
+          fun.(pid)
+        catch
+          :exit, reason -> {:error, "GenServer call failed: #{inspect(reason)}"}
+        end
+
+      [{_pid, other}] ->
+        {:error, "MCP management only supports opencode, got: #{other}"}
 
       [] ->
         {:error, "Session not found: #{thread_id}"}

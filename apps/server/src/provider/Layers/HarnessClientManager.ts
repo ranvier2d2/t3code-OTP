@@ -211,6 +211,31 @@ export class HarnessClientManager {
     }
   }
 
+  async mcpStatus(threadId: string): Promise<Record<string, unknown>> {
+    const result = await this.push("mcp.status", { threadId });
+    if (result && typeof result === "object" && "status" in (result as Record<string, unknown>)) {
+      return (result as Record<string, unknown>).status as Record<string, unknown>;
+    }
+    return (result as Record<string, unknown>) ?? {};
+  }
+
+  async mcpAdd(
+    threadId: string,
+    name: string,
+    config: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const result = await this.push("mcp.add", { threadId, name, config });
+    return (result as Record<string, unknown>) ?? {};
+  }
+
+  async mcpConnect(threadId: string, name: string): Promise<void> {
+    await this.push("mcp.connect", { threadId, name });
+  }
+
+  async mcpDisconnect(threadId: string, name: string): Promise<void> {
+    await this.push("mcp.disconnect", { threadId, name });
+  }
+
   async stopAll(): Promise<void> {
     await this.push("session.stopAll", {});
   }

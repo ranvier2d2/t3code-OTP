@@ -200,6 +200,19 @@ defmodule Harness.Providers.OpenCodeSession do
           {:ok, session_id} ->
             state = %{state | opencode_session_id: session_id, ready: true}
 
+            # Hydrate message history from server on resume so read_thread
+            # returns prior turns even after GenServer crash/restart.
+            state =
+              case fetch_server_messages(state) do
+                {:ok, msgs} when msgs != [] ->
+                  turns = server_messages_to_turns(msgs)
+                  Logger.info("Hydrated #{length(turns)} turns from server for thread #{state.thread_id}")
+                  %{state | messages: turns}
+
+                _ ->
+                  state
+              end
+
             emit_event(state, :session, "session/started", %{
               "sessionId" => session_id,
               "model" => Map.get(state.params, "model"),
@@ -499,15 +512,88 @@ defmodule Harness.Providers.OpenCodeSession do
 
   @impl true
   def handle_call(:read_thread, _from, state) do
+    # If in-memory buffer is empty but we have an active session, try fetching
+    # from the server as a read-only fallback (don't mutate state).
+    messages =
+      if state.messages == [] and state.opencode_session_id do
+        case fetch_server_messages(state) do
+          {:ok, msgs} when msgs != [] -> server_messages_to_turns(msgs)
+          _ -> []
+        end
+      else
+        state.messages
+      end
+
     thread = %{
       threadId: state.thread_id,
       turns:
-        Enum.map(state.messages, fn m ->
+        Enum.map(messages, fn m ->
           %{id: Map.get(m, :turn_id, ""), items: Map.get(m, :items, [])}
         end)
     }
 
     {:reply, {:ok, thread}, state}
+  end
+
+  # --- MCP Management ---
+
+  @impl true
+  def handle_call(:mcp_status, _from, state) do
+    result =
+      case http_get("#{state.base_url}/mcp") do
+        {:ok, data} -> {:ok, data}
+        {:error, reason} -> {:error, reason}
+      end
+
+    {:reply, result, state}
+  end
+
+  @impl true
+  def handle_call({:mcp_add, name, config}, _from, state) do
+    body = Map.merge(%{"name" => name}, config)
+
+    result =
+      case http_post("#{state.base_url}/mcp", body) do
+        {:ok, data} -> {:ok, data}
+        {:error, reason} -> {:error, reason}
+      end
+
+    {:reply, result, state}
+  end
+
+  @impl true
+  def handle_call({:mcp_connect, name}, _from, state) do
+    result =
+      case http_post("#{state.base_url}/mcp/#{name}/connect", %{}) do
+        {:ok, _} -> :ok
+        {:error, reason} -> {:error, reason}
+      end
+
+    {:reply, result, state}
+  end
+
+  @impl true
+  def handle_call({:mcp_disconnect, name}, _from, state) do
+    result =
+      case http_post("#{state.base_url}/mcp/#{name}/disconnect", %{}) do
+        {:ok, _} -> :ok
+        {:error, reason} -> {:error, reason}
+      end
+
+    {:reply, result, state}
+  end
+
+  # --- List Models (HTTP-based discovery) ---
+
+  @impl true
+  def handle_call(:list_models, _from, state) do
+    result =
+      case fetch_providers(state) do
+        {:ok, providers} -> {:ok, extract_models_from_providers(providers)}
+        {:error, reason} -> {:error, reason}
+      end
+
+    {:reply, result, state}
   end
 
   # --- Rollback ---
@@ -532,6 +618,16 @@ defmodule Harness.Providers.OpenCodeSession do
 
     # Cancel pending approvals/elicitations so SQLite rows are cleaned up
     cancel_all_pending(state)
+
+    # Best-effort cleanup: delete the OpenCode session from the server's SQLite DB
+    # so sessions don't accumulate across restarts.
+    try do
+      delete_session(state)
+    rescue
+      _ -> :ok
+    catch
+      _, _ -> :ok
+    end
 
     # Reject ready waiters
     Enum.each(state.ready_waiters, &GenServer.reply(&1, {:error, "Session terminated"}))
@@ -1242,6 +1338,14 @@ defmodule Harness.Providers.OpenCodeSession do
     end
   end
 
+  defp http_delete(url) do
+    case Req.request(method: :delete, url: url, receive_timeout: 10_000) do
+      {:ok, %{status: status}} when status in 200..204 -> {:ok, %{}}
+      {:ok, %{status: status, body: body}} -> {:error, "HTTP #{status}: #{inspect(body) |> String.slice(0, 200)}"}
+      {:error, reason} -> {:error, inspect(reason)}
+    end
+  end
+
   defp http_post(url, body) do
     case Req.post(url, json: body, receive_timeout: 30_000) do
       {:ok, %{status: status, body: body}} when status in 200..204 ->
@@ -1336,6 +1440,113 @@ defmodule Harness.Providers.OpenCodeSession do
   defp abort_session(state) do
     if state.opencode_session_id do
       http_post("#{state.base_url}/session/#{state.opencode_session_id}/abort", %{})
+    end
+  end
+
+  # Fetch providers from the OpenCode server's GET /provider endpoint.
+  # Returns {:ok, provider_map} or {:error, reason}.
+  defp fetch_providers(state) do
+    case http_get("#{state.base_url}/provider") do
+      {:ok, %{"all" => providers}} when is_map(providers) ->
+        {:ok, providers}
+
+      {:ok, providers} when is_map(providers) ->
+        {:ok, providers}
+
+      {:ok, _} ->
+        {:ok, %{}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # Extract a flat list of %{"slug" => "provider/model", "name" => "..."} from the
+  # provider map returned by GET /provider.
+  defp extract_models_from_providers(providers) when is_map(providers) do
+    Enum.flat_map(providers, fn {provider_key, provider_data} ->
+      models = Map.get(provider_data, "models", %{})
+
+      if is_map(models) do
+        Enum.map(models, fn {model_key, model_data} ->
+          slug = "#{provider_key}/#{model_key}"
+          name = Map.get(model_data, "name", model_key)
+          %{"slug" => slug, "name" => name}
+        end)
+      else
+        []
+      end
+    end)
+  end
+
+  defp extract_models_from_providers(_), do: []
+
+  # Fetch message history from the OpenCode server for the current session.
+  # Returns {:ok, messages} on success or {:ok, []} on any failure (never crashes).
+  defp fetch_server_messages(state) do
+    if state.opencode_session_id do
+      case http_get("#{state.base_url}/session/#{state.opencode_session_id}/message") do
+        {:ok, %{"messages" => messages}} when is_list(messages) ->
+          {:ok, messages}
+
+        {:ok, messages} when is_list(messages) ->
+          {:ok, messages}
+
+        {:ok, _} ->
+          {:ok, []}
+
+        {:error, reason} ->
+          Logger.warning("Failed to fetch server messages for session #{state.opencode_session_id}: #{inspect(reason)}")
+          {:ok, []}
+      end
+    else
+      {:ok, []}
+    end
+  end
+
+  # Convert server-side messages into the in-memory turn buffer shape
+  # used by read_thread. Filters for assistant-role messages only.
+  defp server_messages_to_turns(messages) when is_list(messages) do
+    messages
+    |> Enum.filter(fn msg -> Map.get(msg, "role") == "assistant" end)
+    |> Enum.map(fn msg ->
+      %{
+        turn_id: Map.get(msg, "id", generate_id()),
+        started_at: Map.get(msg, "createdAt", now_iso()),
+        items:
+          (Map.get(msg, "parts", []) || [])
+          |> Enum.flat_map(fn part ->
+            case Map.get(part, "type") do
+              "text" ->
+                text = Map.get(part, "text", "")
+                if text != "", do: [%{"type" => "text", "text" => text}], else: []
+
+              "tool" ->
+                [%{
+                  "type" => "tool",
+                  "tool" => Map.get(part, "tool", "unknown"),
+                  "state" => Map.get(part, "state", %{})
+                }]
+
+              _ ->
+                []
+            end
+          end)
+      }
+    end)
+  end
+
+  defp server_messages_to_turns(_), do: []
+
+  defp delete_session(state) do
+    if state.opencode_session_id do
+      case http_delete("#{state.base_url}/session/#{state.opencode_session_id}") do
+        {:ok, _} ->
+          Logger.info("Deleted OpenCode session #{state.opencode_session_id} for thread #{state.thread_id}")
+
+        {:error, reason} ->
+          Logger.warning("Failed to delete OpenCode session #{state.opencode_session_id}: #{inspect(reason)}")
+      end
     end
   end
 

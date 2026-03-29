@@ -200,6 +200,52 @@ defmodule HarnessWeb.HarnessChannel do
     {:reply, {:error, %{message: "Missing required param: provider"}}, socket}
   end
 
+  # --- MCP Management (OpenCode only) ---
+
+  @impl true
+  def handle_in("mcp.status", %{"threadId" => thread_id}, socket) do
+    case SessionManager.mcp_status(thread_id) do
+      {:ok, data} ->
+        {:reply, {:ok, %{status: data}}, socket}
+
+      {:error, reason} ->
+        {:reply, {:error, %{message: format_error(reason)}}, socket}
+    end
+  end
+
+  @impl true
+  def handle_in("mcp.add", %{"threadId" => thread_id, "name" => name, "config" => config}, socket) do
+    case SessionManager.mcp_add(thread_id, name, config) do
+      {:ok, data} ->
+        {:reply, {:ok, data}, socket}
+
+      {:error, reason} ->
+        {:reply, {:error, %{message: format_error(reason)}}, socket}
+    end
+  end
+
+  @impl true
+  def handle_in("mcp.connect", %{"threadId" => thread_id, "name" => name}, socket) do
+    case SessionManager.mcp_connect(thread_id, name) do
+      :ok ->
+        {:reply, {:ok, %{}}, socket}
+
+      {:error, reason} ->
+        {:reply, {:error, %{message: format_error(reason)}}, socket}
+    end
+  end
+
+  @impl true
+  def handle_in("mcp.disconnect", %{"threadId" => thread_id, "name" => name}, socket) do
+    case SessionManager.mcp_disconnect(thread_id, name) do
+      :ok ->
+        {:reply, {:ok, %{}}, socket}
+
+      {:error, reason} ->
+        {:reply, {:error, %{message: format_error(reason)}}, socket}
+    end
+  end
+
   # --- Snapshot ---
 
   @impl true

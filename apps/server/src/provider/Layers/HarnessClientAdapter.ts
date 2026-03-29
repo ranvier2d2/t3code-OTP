@@ -1380,6 +1380,58 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
         );
 
       // -------------------------------------------------------------------
+      // MCP Management (OpenCode only)
+      // -------------------------------------------------------------------
+
+      const mcpStatus: HarnessClientAdapterShape["mcpStatus"] = (threadId) =>
+        Effect.tryPromise({
+          try: () => manager.mcpStatus(threadId),
+          catch: (cause) =>
+            new ProviderAdapterRequestError({
+              provider: DEFAULT_PROVIDER,
+              method: "mcp/status",
+              detail: toMessage(cause, "Failed to get MCP status."),
+              cause,
+            }),
+        });
+
+      const mcpAdd: HarnessClientAdapterShape["mcpAdd"] = (threadId, name, config) =>
+        Effect.tryPromise({
+          try: () => manager.mcpAdd(threadId, name, config),
+          catch: (cause) =>
+            new ProviderAdapterRequestError({
+              provider: DEFAULT_PROVIDER,
+              method: "mcp/add",
+              detail: toMessage(cause, `Failed to add MCP server "${name}".`),
+              cause,
+            }),
+        });
+
+      const mcpConnect: HarnessClientAdapterShape["mcpConnect"] = (threadId, name) =>
+        Effect.tryPromise({
+          try: () => manager.mcpConnect(threadId, name),
+          catch: (cause) =>
+            new ProviderAdapterRequestError({
+              provider: DEFAULT_PROVIDER,
+              method: "mcp/connect",
+              detail: toMessage(cause, `Failed to connect MCP server "${name}".`),
+              cause,
+            }),
+        });
+
+      const mcpDisconnect: HarnessClientAdapterShape["mcpDisconnect"] = (threadId, name) =>
+        Effect.tryPromise({
+          try: () => manager.mcpDisconnect(threadId, name),
+          catch: (cause) =>
+            new ProviderAdapterRequestError({
+              provider: DEFAULT_PROVIDER,
+              method: "mcp/disconnect",
+              detail: toMessage(cause, `Failed to disconnect MCP server "${name}".`),
+              cause,
+            }),
+        });
+
+      // -------------------------------------------------------------------
       // Assemble the adapter shape
       // -------------------------------------------------------------------
 
@@ -1408,6 +1460,10 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
         rollbackThread,
         stopAll,
         listModels,
+        mcpStatus,
+        mcpAdd,
+        mcpConnect,
+        mcpDisconnect,
         streamEvents: Stream.fromQueue(runtimeEventQueue),
       } satisfies HarnessClientAdapterShape;
     }),

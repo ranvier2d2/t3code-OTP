@@ -20,5 +20,6 @@ export const HARNESS_PROVIDER_CAPABILITIES: Record<
   opencode: {
     ...DEFAULT_PROVIDER_CAPABILITIES.opencode,
     sessionModelSwitch: "restart-session",
+    mcpConfig: "full",
   },
 };

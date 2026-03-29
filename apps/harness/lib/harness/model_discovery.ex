@@ -99,8 +99,32 @@ defmodule Harness.ModelDiscovery do
   end
 
   defp do_fetch("opencode") do
-    binary = System.find_executable("opencode") || "opencode"
-    fetch_from_cli(binary, ["models"], &parse_opencode_models/1)
+    # Try HTTP-based discovery first via an active OpenCode session.
+    # This avoids spawning a CLI process when the server is already running.
+    case try_http_model_discovery() do
+      {:ok, models} when models != [] ->
+        Logger.info("Discovered #{length(models)} OpenCode models via HTTP (no CLI spawn)")
+        {:ok, models}
+
+      _ ->
+        # Fall back to CLI discovery
+        binary = System.find_executable("opencode") || "opencode"
+        fetch_from_cli(binary, ["models"], &parse_opencode_models/1)
+    end
+  end
+
+  defp try_http_model_discovery do
+    # Find any active OpenCode session and query models through it
+    sessions = Harness.SessionManager.list_sessions()
+
+    opencode_session =
+      Enum.find(sessions, fn s -> s.provider == "opencode" end)
+
+    if opencode_session do
+      Harness.SessionManager.list_models_from_session(opencode_session.threadId)
+    else
+      {:error, :no_active_session}
+    end
   end
 
   defp do_fetch(provider) do
