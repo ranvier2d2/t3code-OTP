@@ -17,7 +17,6 @@ defmodule Harness.Providers.CodexSession do
   @behaviour Harness.Providers.ProviderBehaviour
 
   use GenServer, restart: :temporary
-  @behaviour Harness.ProviderSession
 
   alias Harness.JsonRpc
   alias Harness.Event
@@ -151,6 +150,7 @@ defmodule Harness.Providers.CodexSession do
     GenServer.stop(pid, :normal)
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def wait_for_ready(pid, timeout \\ 30_000) do
     GenServer.call(pid, :wait_for_ready, timeout)
   end
@@ -197,22 +197,14 @@ defmodule Harness.Providers.CodexSession do
   def handle_info(:initialize, state) do
     {id, state} = next_request_id(state)
 
-    codex_opts = get_in(state.params, ["providerOptions", "codex"]) || %{}
-    experimental_api = Map.get(codex_opts, "experimentalApi", false)
-
-    capabilities =
-      if experimental_api do
-        %{"experimentalApi" => true}
-      else
-        %{}
-      end
-
     initialize_params = %{
       "clientInfo" => %{
         "name" => "t3-harness",
         "version" => "0.1.0"
       },
-      "capabilities" => capabilities
+      "capabilities" => %{
+        "experimentalApi" => true
+      }
     }
 
     state = send_rpc_request(state, id, "initialize", initialize_params)
