@@ -1,5 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { Effect, FileSystem, Layer, Path } from "effect";
+import { Effect, FileSystem, Layer, Path, Stream } from "effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { CheckpointDiffQueryLive } from "./checkpointing/Layers/CheckpointDiffQuery";
@@ -16,7 +16,7 @@ import { OrchestrationProjectionPipelineLive } from "./orchestration/Layers/Proj
 import { OrchestrationProjectionSnapshotQueryLive } from "./orchestration/Layers/ProjectionSnapshotQuery";
 import { ProviderRuntimeIngestionLive } from "./orchestration/Layers/ProviderRuntimeIngestion";
 import { RuntimeReceiptBusLive } from "./orchestration/Layers/RuntimeReceiptBus";
-import type { ProviderKind } from "@t3tools/contracts";
+import type { ProviderKind, ServerProvider } from "@t3tools/contracts";
 import {
   ProviderAdapterProcessError,
   ProviderUnsupportedError,
@@ -43,6 +43,7 @@ import {
   ProviderRegistryLive,
   ProviderRegistryWithHarnessLive,
 } from "./provider/Layers/ProviderRegistry";
+import { ProviderRegistry } from "./provider/Services/ProviderRegistry";
 import { ServerSettingsService } from "./serverSettings";
 
 import { TerminalManagerLive } from "./terminal/Layers/Manager";
@@ -101,20 +102,22 @@ export function makeServerProviderLayer(options?: {
     const providerSessionDirectoryLayer = ProviderSessionDirectoryLive.pipe(
       Layer.provide(ProviderSessionRuntimeRepositoryLive),
     );
+    const harnessEnabled = serverConfig.harnessPort !== undefined;
+    const useLegacyCodex = process.env.T3CODE_CODEX_LEGACY === "1";
 
     // Node SDK adapters — always available
-    const codexAdapterLayer = makeCodexAdapterLive(
-      nativeEventLogger ? { nativeEventLogger } : undefined,
-    ).pipe(Layer.provideMerge(McpConfigServiceLive));
     const claudeAdapterLayer = makeClaudeAdapterLive(
       nativeEventLogger ? { nativeEventLogger } : undefined,
     );
+    const legacyCodexAdapterLayer = useLegacyCodex
+      ? makeCodexAdapterLive(nativeEventLogger ? { nativeEventLogger } : undefined).pipe(
+          Layer.provideMerge(McpConfigServiceLive),
+        )
+      : null;
 
     // Harness adapters — only when harnessPort is configured
     // Codex, Cursor, and OpenCode route through the Elixir harness.
     // Claude always uses the Node SDK adapter (Agent SDK, not CLI).
-    const harnessEnabled = serverConfig.harnessPort !== undefined;
-    const useLegacyCodex = process.env.T3CODE_CODEX_LEGACY === "1";
     const HARNESS_PROVIDERS = useLegacyCodex
       ? (["cursor", "opencode"] as const)
       : (["codex", "cursor", "opencode"] as const);
@@ -128,9 +131,11 @@ export function makeServerProviderLayer(options?: {
 
     const harnessAdapterLayer = options?.harnessAdapterLayer ?? makeHarnessClientAdapterLive();
 
-    const adapterRegistryLayer = harnessEnabled
-      ? // Path A: harness available — route harness providers through it
-        Layer.effect(
+    let adapterRegistryLayer;
+
+    if (harnessEnabled) {
+      if (useLegacyCodex) {
+        adapterRegistryLayer = Layer.effect(
           ProviderAdapterRegistry,
           Effect.gen(function* () {
             const claudeAdapter = yield* ClaudeAdapter;
@@ -141,9 +146,7 @@ export function makeServerProviderLayer(options?: {
             const byProvider = new Map<string, Adapter>();
 
             byProvider.set("claudeAgent", claudeAdapter);
-            if (useLegacyCodex) {
-              byProvider.set("codex", codexAdapter);
-            }
+            byProvider.set("codex", codexAdapter);
 
             for (const providerKind of HARNESS_PROVIDERS) {
               byProvider.set(providerKind, {
@@ -169,62 +172,102 @@ export function makeServerProviderLayer(options?: {
             };
           }),
         ).pipe(
-          Layer.provide(codexAdapterLayer),
+          Layer.provide(legacyCodexAdapterLayer!),
           Layer.provide(claudeAdapterLayer),
           Layer.provideMerge(harnessAdapterLayer.pipe(Layer.provideMerge(McpConfigServiceLive))),
           Layer.provideMerge(providerSessionDirectoryLayer),
-        )
-      : useLegacyCodex
-        ? // Path B: legacy codex, no harness — codex + claude only
-          ProviderAdapterRegistryLive.pipe(
-            Layer.provide(codexAdapterLayer),
-            Layer.provide(claudeAdapterLayer),
-            Layer.provideMerge(providerSessionDirectoryLayer),
-          )
-        : // Path C: harness required but not configured — error gracefully
-          Layer.effect(
-            ProviderAdapterRegistry,
-            Effect.gen(function* () {
-              yield* Effect.logError(
-                "[codex-harness-cutover] Harness port is not configured but Codex requires " +
-                  "the harness (default path). Set T3CODE_CODEX_LEGACY=1 to use the legacy " +
-                  "direct adapter, or configure harnessPort.",
-              );
-              const claudeAdapter = yield* ClaudeAdapter;
-              type Adapter = ProviderAdapterShape<ProviderAdapterError>;
-              const byProvider = new Map<string, Adapter>();
-              byProvider.set("claudeAgent", claudeAdapter);
+        );
+      } else {
+        adapterRegistryLayer = Layer.effect(
+          ProviderAdapterRegistry,
+          Effect.gen(function* () {
+            const claudeAdapter = yield* ClaudeAdapter;
+            const harnessBaseAdapter = yield* HarnessClientAdapter;
 
-              return {
-                getByProvider: (provider: ProviderKind) => {
-                  const adapter = byProvider.get(provider);
-                  if (!adapter) {
-                    return Effect.fail(
-                      new ProviderUnsupportedError({
-                        provider,
-                        ...(provider === "codex" || provider === "cursor" || provider === "opencode"
-                          ? {
-                              cause: new Error(
-                                `Harness port is not configured. Provider '${provider}' requires the Elixir harness. ` +
-                                  `Set T3CODE_CODEX_LEGACY=1 to use the legacy direct adapter, or configure harnessPort.`,
-                              ),
-                            }
-                          : {}),
-                      }),
-                    );
-                  }
-                  return Effect.succeed(adapter);
-                },
-                listProviders: () =>
-                  Effect.sync(
-                    () => Array.from(byProvider.keys()) as unknown as readonly ProviderKind[],
-                  ),
-              };
-            }),
-          ).pipe(
-            Layer.provide(claudeAdapterLayer),
-            Layer.provideMerge(providerSessionDirectoryLayer),
+            type Adapter = ProviderAdapterShape<ProviderAdapterError>;
+            const byProvider = new Map<string, Adapter>();
+
+            byProvider.set("claudeAgent", claudeAdapter);
+
+            for (const providerKind of HARNESS_PROVIDERS) {
+              byProvider.set(providerKind, {
+                ...harnessBaseAdapter,
+                provider: providerKind,
+                capabilities:
+                  HARNESS_PROVIDER_CAPABILITIES[providerKind] ?? harnessBaseAdapter.capabilities,
+              } as Adapter);
+            }
+
+            return {
+              getByProvider: (provider) => {
+                const adapter = byProvider.get(provider);
+                if (!adapter) {
+                  return Effect.fail(new ProviderUnsupportedError({ provider }));
+                }
+                return Effect.succeed(adapter);
+              },
+              listProviders: () =>
+                Effect.sync(
+                  () => Array.from(byProvider.keys()) as unknown as readonly ProviderKind[],
+                ),
+            };
+          }),
+        ).pipe(
+          Layer.provide(claudeAdapterLayer),
+          Layer.provideMerge(harnessAdapterLayer.pipe(Layer.provideMerge(McpConfigServiceLive))),
+          Layer.provideMerge(providerSessionDirectoryLayer),
+        );
+      }
+    } else if (useLegacyCodex) {
+      adapterRegistryLayer = ProviderAdapterRegistryLive.pipe(
+        Layer.provide(legacyCodexAdapterLayer!),
+        Layer.provide(claudeAdapterLayer),
+        Layer.provideMerge(providerSessionDirectoryLayer),
+      );
+    } else {
+      adapterRegistryLayer = Layer.effect(
+        ProviderAdapterRegistry,
+        Effect.gen(function* () {
+          yield* Effect.logError(
+            "[codex-harness-cutover] Harness port is not configured but Codex requires " +
+              "the harness (default path). Set T3CODE_CODEX_LEGACY=1 to use the legacy " +
+              "direct adapter, or configure harnessPort.",
           );
+          const claudeAdapter = yield* ClaudeAdapter;
+          type Adapter = ProviderAdapterShape<ProviderAdapterError>;
+          const byProvider = new Map<string, Adapter>();
+          byProvider.set("claudeAgent", claudeAdapter);
+
+          return {
+            getByProvider: (provider: ProviderKind) => {
+              const adapter = byProvider.get(provider);
+              if (!adapter) {
+                return Effect.fail(
+                  new ProviderUnsupportedError({
+                    provider,
+                    ...(provider === "codex" || provider === "cursor" || provider === "opencode"
+                      ? {
+                          cause: new Error(
+                            `Harness port is not configured. Provider '${provider}' requires the Elixir harness. ` +
+                              (provider === "codex"
+                                ? "Set T3CODE_CODEX_LEGACY=1 to use the legacy direct adapter, or configure harnessPort."
+                                : "Configure harnessPort or use the Elixir harness."),
+                          ),
+                        }
+                      : {}),
+                  }),
+                );
+              }
+              return Effect.succeed(adapter);
+            },
+            listProviders: () =>
+              Effect.sync(
+                () => Array.from(byProvider.keys()) as unknown as readonly ProviderKind[],
+              ),
+          };
+        }),
+      ).pipe(Layer.provide(claudeAdapterLayer), Layer.provideMerge(providerSessionDirectoryLayer));
+    }
 
     return makeProviderServiceLive(
       canonicalEventLogger ? { canonicalEventLogger } : undefined,
@@ -304,6 +347,7 @@ export function makeProviderRegistryLayer(options?: {
   return Effect.gen(function* () {
     const serverConfig = yield* ServerConfig;
     const harnessEnabled = serverConfig.harnessPort !== undefined;
+    const useLegacyCodex = process.env.T3CODE_CODEX_LEGACY === "1";
     if (harnessEnabled) {
       return ProviderRegistryWithHarnessLive.pipe(
         Layer.provide(
@@ -313,6 +357,26 @@ export function makeProviderRegistryLayer(options?: {
         ),
       );
     }
-    return ProviderRegistryLive;
+    if (useLegacyCodex) {
+      return ProviderRegistryLive;
+    }
+    return Layer.effect(
+      ProviderRegistry,
+      Effect.gen(function* () {
+        const baseRegistry = yield* ProviderRegistry;
+        const excludeCodex = (providers: ReadonlyArray<ServerProvider>) =>
+          providers.filter((provider) => provider.provider !== "codex");
+
+        return {
+          getProviders: baseRegistry.getProviders.pipe(Effect.map(excludeCodex)),
+          refresh: (provider?: ProviderKind) =>
+            (provider === "codex"
+              ? baseRegistry.getProviders
+              : baseRegistry.refresh(provider)
+            ).pipe(Effect.map(excludeCodex)),
+          streamChanges: baseRegistry.streamChanges.pipe(Stream.map(excludeCodex)),
+        };
+      }),
+    ).pipe(Layer.provide(ProviderRegistryLive));
   }).pipe(Layer.unwrap);
 }

@@ -919,18 +919,21 @@ const makeProviderService = (options?: ProviderServiceLiveOptions) =>
         if (routed.isActive) {
           yield* routed.adapter.stopSession(routed.threadId);
         }
+        yield* clearTurnTelemetry(input.threadId);
         yield* mcpConfig.clearSnapshot(input.threadId);
         yield* directory.remove(input.threadId);
         const sessionTelemetry = yield* takeSessionTelemetry(input.threadId);
         yield* analytics.record("provider.session.stopped", {
           provider: routed.adapter.provider,
         });
-        yield* analytics.record("provider.session.end", {
-          provider: routed.adapter.provider,
-          adapterPath: sessionTelemetry?.adapterPath ?? routed.adapterPath,
-          durationMs: sessionTelemetry ? Date.now() - sessionTelemetry.startedAtMs : null,
-          endReason: "explicit",
-        });
+        if (sessionTelemetry) {
+          yield* analytics.record("provider.session.end", {
+            provider: routed.adapter.provider,
+            adapterPath: sessionTelemetry.adapterPath,
+            durationMs: Date.now() - sessionTelemetry.startedAtMs,
+            endReason: "explicit",
+          });
+        }
       });
 
     const listSessions: ProviderServiceShape["listSessions"] = () =>
