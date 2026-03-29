@@ -6,6 +6,9 @@
  *
  * @module CodexAdapterLive
  */
+import fs from "node:fs";
+import path from "node:path";
+
 import {
   type CanonicalItemType,
   type CanonicalRequestType,
@@ -40,6 +43,9 @@ import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
+import { DIRECT_PROVIDER_CAPABILITIES } from "../providerCapabilities.ts";
+import { McpConfigService } from "../Services/McpConfig.ts";
+import { generatedMcpDir, mergeCodexToml } from "../mcpTranslation.ts";
 
 const PROVIDER = "codex" as const;
 
@@ -1334,6 +1340,7 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const serverConfig = yield* Effect.service(ServerConfig);
+    const mcpConfigService = yield* Effect.service(McpConfigService);
     const nativeEventLogger =
       options?.nativeEventLogger ??
       (options?.nativeEventLogPath !== undefined
@@ -1383,7 +1390,48 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
         ),
       );
       const binaryPath = codexSettings.binaryPath;
-      const homePath = codexSettings.homePath;
+      const baseHomePath = codexSettings.homePath;
+      const resolvedMcp = yield* mcpConfigService.getSnapshot(input.threadId);
+      const translatedHomePath =
+        resolvedMcp && resolvedMcp.servers.length > 0
+          ? yield* Effect.try({
+              try: () => {
+                const generatedDir = generatedMcpDir(
+                  serverConfig.stateDir,
+                  "codex",
+                  input.threadId,
+                );
+                fs.rmSync(generatedDir, { recursive: true, force: true });
+                const generatedHomePath = path.join(generatedDir, "home");
+                fs.mkdirSync(generatedHomePath, { recursive: true });
+                if (
+                  baseHomePath &&
+                  fs.existsSync(baseHomePath) &&
+                  baseHomePath !== generatedHomePath
+                ) {
+                  fs.cpSync(baseHomePath, generatedHomePath, { recursive: true, force: true });
+                }
+                const configTomlPath = path.join(generatedHomePath, "config.toml");
+                const existingConfig = fs.existsSync(configTomlPath)
+                  ? fs.readFileSync(configTomlPath, "utf8")
+                  : "";
+                fs.writeFileSync(
+                  configTomlPath,
+                  mergeCodexToml(existingConfig, resolvedMcp),
+                  "utf8",
+                );
+                return generatedHomePath;
+              },
+              catch: (cause) =>
+                new ProviderAdapterProcessError({
+                  provider: PROVIDER,
+                  threadId: input.threadId,
+                  detail: "Failed to materialize Codex MCP configuration.",
+                  cause,
+                }),
+            })
+          : undefined;
+      const homePath = translatedHomePath ?? baseHomePath;
       const managerInput: CodexAppServerStartSessionInput = {
         threadId: input.threadId,
         provider: "codex",
@@ -1597,12 +1645,7 @@ const makeCodexAdapter = (options?: CodexAdapterLiveOptions) =>
 
     return {
       provider: PROVIDER,
-      capabilities: {
-        sessionModelSwitch: "in-session",
-        supportsUserInput: true,
-        supportsRollback: true,
-        supportsFileChangeApproval: true,
-      },
+      capabilities: DIRECT_PROVIDER_CAPABILITIES.codex,
       startSession,
       sendTurn,
       interruptTurn,

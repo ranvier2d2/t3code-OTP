@@ -35,7 +35,10 @@ defmodule Harness.Providers.OpenCodeSession do
   Child session tracking via `session.created` with `parentID`:
   - Emits `collab_agent_spawn_begin` with parent→child linkage
   """
+  @behaviour Harness.Providers.ProviderBehaviour
+
   use GenServer, restart: :temporary
+  @behaviour Harness.ProviderSession
 
   alias Harness.Event
 
@@ -54,6 +57,7 @@ defmodule Harness.Providers.OpenCodeSession do
     :sse_pid,
     :base_url,
     :binary_path,
+    :mcp_config,
     turn_state: nil,
     pending_permissions: %{},
     messages: [],
@@ -70,6 +74,7 @@ defmodule Harness.Providers.OpenCodeSession do
 
   # --- Public API ---
 
+  @impl Harness.Providers.ProviderBehaviour
   def start_link(opts) do
     thread_id = Map.fetch!(opts, :thread_id)
 
@@ -78,28 +83,39 @@ defmodule Harness.Providers.OpenCodeSession do
     )
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def send_turn(pid, params) do
     GenServer.call(pid, {:send_turn, params}, 60_000)
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def interrupt_turn(pid, _thread_id, _turn_id) do
     GenServer.call(pid, :interrupt_turn)
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def respond_to_approval(pid, request_id, decision) do
     GenServer.call(pid, {:respond_to_approval, request_id, decision})
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def respond_to_user_input(pid, request_id, answers) do
     GenServer.call(pid, {:respond_to_user_input, request_id, answers})
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def read_thread(pid, _thread_id) do
     GenServer.call(pid, :read_thread, 30_000)
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def rollback_thread(pid, _thread_id, num_turns) do
     GenServer.call(pid, {:rollback_thread, num_turns}, 30_000)
+  end
+
+  @impl Harness.Providers.ProviderBehaviour
+  def stop(pid) do
+    GenServer.stop(pid, :normal)
   end
 
   def wait_for_ready(pid, timeout \\ 30_000) do
@@ -110,13 +126,16 @@ defmodule Harness.Providers.OpenCodeSession do
 
   @impl true
   def init(opts) do
+    params = Map.get(opts, :params, %{})
+
     state = %__MODULE__{
       thread_id: Map.fetch!(opts, :thread_id),
       provider: "opencode",
       event_callback: Map.fetch!(opts, :event_callback),
-      params: Map.get(opts, :params, %{}),
+      params: params,
       binary_path: resolve_opencode_binary(opts),
-      opencode_port: find_available_port()
+      opencode_port: find_available_port(),
+      mcp_config: Map.get(params, "mcp_config")
     }
 
     state = %{state | base_url: "http://127.0.0.1:#{state.opencode_port}"}
@@ -564,7 +583,7 @@ defmodule Harness.Providers.OpenCodeSession do
             {:line, 65_536},
             {:cd, to_charlist(cwd)},
             {:args, Enum.map(args, &to_charlist/1)},
-            {:env, build_env()}
+            {:env, build_env(state)}
           ]
         )
 
@@ -574,9 +593,18 @@ defmodule Harness.Providers.OpenCodeSession do
     end
   end
 
-  defp build_env do
-    System.get_env()
-    |> Enum.map(fn {k, v} -> {to_charlist(k), to_charlist(v)} end)
+  defp build_env(state) do
+    base =
+      System.get_env()
+      |> Enum.map(fn {k, v} -> {to_charlist(k), to_charlist(v)} end)
+
+    opencode_config_path = get_in(state.params, ["providerOptions", "opencode", "configPath"])
+
+    if is_binary(opencode_config_path) and opencode_config_path != "" do
+      [{~c"OPENCODE_CONFIG", to_charlist(opencode_config_path)} | base]
+    else
+      base
+    end
   end
 
   defp wait_for_server(_base_url, 0), do: {:error, :timeout}

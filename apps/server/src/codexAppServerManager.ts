@@ -513,6 +513,12 @@ export interface CodexAppServerManagerEvents {
   event: [event: ProviderEvent];
 }
 
+/**
+ * @deprecated Since the codex-harness-only cutover (Task 007), Codex sessions
+ * route through the Elixir harness by default. This manager is only used by
+ * the legacy `CodexAdapter` when `T3CODE_CODEX_LEGACY=1` is set and will be
+ * removed in a future release.
+ */
 export class CodexAppServerManager extends EventEmitter<CodexAppServerManagerEvents> {
   private readonly sessions = new Map<ThreadId, CodexSessionContext>();
 

@@ -9,7 +9,6 @@
  */
 import type {
   HarnessProviderSettings,
-  ProviderKind,
   ServerProvider,
   ServerProviderModel,
 } from "@t3tools/contracts";
@@ -23,16 +22,13 @@ import { HarnessClientAdapter } from "../Services/HarnessClientAdapter";
 import { ServerSettingsService } from "../../serverSettings";
 import { HARNESS_PROVIDER_CAPABILITIES } from "./HarnessClientAdapter";
 
-function makeHarnessProviderLayer(provider: ProviderKind) {
+function makeHarnessProviderLayer(provider: "cursor" | "opencode") {
   return Effect.gen(function* () {
     const harnessAdapter = yield* HarnessClientAdapter;
     const serverSettings = yield* ServerSettingsService;
 
     const getProviderSettings = serverSettings.getSettings.pipe(
-      Effect.map(
-        (settings) =>
-          settings.providers[provider as "cursor" | "opencode"] as HarnessProviderSettings,
-      ),
+      Effect.map((settings) => settings.providers[provider]),
       Effect.orDie,
     );
 
@@ -88,10 +84,7 @@ function makeHarnessProviderLayer(provider: ProviderKind) {
     return yield* makeManagedServerProvider<HarnessProviderSettings>({
       getSettings: getProviderSettings,
       streamSettings: serverSettings.streamChanges.pipe(
-        Stream.map(
-          (settings) =>
-            settings.providers[provider as "cursor" | "opencode"] as HarnessProviderSettings,
-        ),
+        Stream.map((settings) => settings.providers[provider]),
       ),
       haveSettingsChanged: (previous, next) => !Equal.equals(previous, next),
       checkProvider,

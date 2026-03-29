@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import {
   ApprovalRequestId,
   EventId,
@@ -25,6 +27,7 @@ import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderAdapterValidationError } from "../Errors.ts";
 import { CodexAdapter } from "../Services/CodexAdapter.ts";
+import { McpConfigService } from "../Services/McpConfig.ts";
 import { ProviderSessionDirectory } from "../Services/ProviderSessionDirectory.ts";
 import { makeCodexAdapterLive } from "./CodexAdapter.ts";
 
@@ -153,6 +156,7 @@ const validationLayer = it.layer(
   makeCodexAdapterLive({ manager: validationManager }).pipe(
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
     Layer.provideMerge(ServerSettingsService.layerTest()),
+    Layer.provideMerge(McpConfigService.layerTest()),
     Layer.provideMerge(providerSessionDirectoryTestLayer),
     Layer.provideMerge(NodeServices.layer),
   ),
@@ -210,6 +214,58 @@ validationLayer("CodexAdapterLive validation", (it) => {
       });
     }),
   );
+
+  it.effect("materializes a generated CODEX_HOME when MCP config is resolved for the thread", () =>
+    Effect.gen(function* () {
+      const manager = new FakeCodexManager();
+      const threadId = asThreadId("thread-mcp");
+      const adapterLayer = makeCodexAdapterLive({ manager }).pipe(
+        Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "codex-mcp-test-" })),
+        Layer.provideMerge(ServerSettingsService.layerTest()),
+        Layer.provideMerge(
+          McpConfigService.layerTest({
+            getSnapshot: (requestedThreadId) =>
+              Effect.succeed(
+                requestedThreadId === threadId
+                  ? {
+                      version: "mcp-v1",
+                      resolvedAt: "2026-01-01T00:00:00.000Z",
+                      sourcePaths: ["/tmp/.t3/mcp.json"],
+                      servers: [
+                        {
+                          name: "playwright",
+                          transport: "stdio",
+                          command: "npx",
+                          args: ["@playwright/mcp@latest"],
+                          enabled: true,
+                        },
+                      ],
+                    }
+                  : null,
+              ),
+          }),
+        ),
+        Layer.provideMerge(providerSessionDirectoryTestLayer),
+        Layer.provideMerge(NodeServices.layer),
+      );
+
+      yield* Effect.gen(function* () {
+        const adapter = yield* CodexAdapter;
+        yield* adapter.startSession({
+          provider: "codex",
+          threadId,
+          runtimeMode: "full-access",
+        });
+        const managerInput = manager.startSessionImpl.mock.calls.at(-1)?.[0];
+        assert.ok(managerInput?.homePath);
+        const generatedConfigPath = path.join(managerInput.homePath, "config.toml");
+        assert.equal(fs.existsSync(generatedConfigPath), true);
+        const generatedConfig = fs.readFileSync(generatedConfigPath, "utf8");
+        assert.match(generatedConfig, /\[mcp_servers\.playwright\]/);
+        assert.match(generatedConfig, /command = "npx"/);
+      }).pipe(Effect.provide(adapterLayer));
+    }),
+  );
 });
 
 const sessionErrorManager = new FakeCodexManager();
@@ -220,6 +276,7 @@ const sessionErrorLayer = it.layer(
   makeCodexAdapterLive({ manager: sessionErrorManager }).pipe(
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
     Layer.provideMerge(ServerSettingsService.layerTest()),
+    Layer.provideMerge(McpConfigService.layerTest()),
     Layer.provideMerge(providerSessionDirectoryTestLayer),
     Layer.provideMerge(NodeServices.layer),
   ),
@@ -289,6 +346,7 @@ const lifecycleLayer = it.layer(
   makeCodexAdapterLive({ manager: lifecycleManager }).pipe(
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), process.cwd())),
     Layer.provideMerge(ServerSettingsService.layerTest()),
+    Layer.provideMerge(McpConfigService.layerTest()),
     Layer.provideMerge(providerSessionDirectoryTestLayer),
     Layer.provideMerge(NodeServices.layer),
   ),

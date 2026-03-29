@@ -8,7 +8,10 @@ defmodule Harness.Providers.CursorSession do
   - Parses stdout JSON stream: system/init, thinking/delta, assistant, result
   - Multi-turn via --resume flag
   """
+  @behaviour Harness.Providers.ProviderBehaviour
+
   use GenServer, restart: :temporary
+  @behaviour Harness.ProviderSession
 
   alias Harness.Event
 
@@ -24,6 +27,7 @@ defmodule Harness.Providers.CursorSession do
     :session_id,
     :resume_session_id,
     :binary_path,
+    :mcp_config,
     turn_state: nil,
     pending_approvals: %{},
     turns: [],
@@ -34,6 +38,7 @@ defmodule Harness.Providers.CursorSession do
 
   # --- Public API ---
 
+  @impl Harness.Providers.ProviderBehaviour
   def start_link(opts) do
     thread_id = Map.fetch!(opts, :thread_id)
 
@@ -42,28 +47,39 @@ defmodule Harness.Providers.CursorSession do
     )
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def send_turn(pid, params) do
     GenServer.call(pid, {:send_turn, params}, 60_000)
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def interrupt_turn(pid, _thread_id, _turn_id) do
     GenServer.call(pid, :interrupt_turn, 30_000)
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def respond_to_approval(pid, request_id, decision) do
     GenServer.call(pid, {:respond_to_approval, request_id, decision})
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def respond_to_user_input(pid, request_id, answers) do
     GenServer.call(pid, {:respond_to_user_input, request_id, answers})
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def read_thread(pid, _thread_id) do
     GenServer.call(pid, :read_thread, 30_000)
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def rollback_thread(_pid, _thread_id, _num_turns) do
     {:error, "Rollback not supported for Cursor provider"}
+  end
+
+  @impl Harness.Providers.ProviderBehaviour
+  def stop(pid) do
+    GenServer.stop(pid, :normal)
   end
 
   def wait_for_ready(_pid, _timeout \\ 30_000) do
@@ -91,7 +107,8 @@ defmodule Harness.Providers.CursorSession do
       binary_path: binary_path,
       session_id: cursor_chat_id || generate_id(),
       resume_session_id: resume_session_id,
-      has_real_chat_id: cursor_chat_id != nil
+      has_real_chat_id: cursor_chat_id != nil,
+      mcp_config: Map.get(params, "mcp_config")
     }
 
     # Don't spawn cursor yet — spawn on first send_turn with the actual prompt.

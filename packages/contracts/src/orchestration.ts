@@ -105,11 +105,19 @@ export const ProviderSessionModelSwitchMode = Schema.Literals([
 ]);
 export type ProviderSessionModelSwitchMode = typeof ProviderSessionModelSwitchMode.Type;
 
+export const ProviderCapabilityLevel = Schema.Literals(["none", "basic", "full"]);
+export type ProviderCapabilityLevel = typeof ProviderCapabilityLevel.Type;
+
 export const ProviderCapabilities = Schema.Struct({
   sessionModelSwitch: ProviderSessionModelSwitchMode,
   supportsUserInput: Schema.Boolean,
   supportsRollback: Schema.Boolean,
   supportsFileChangeApproval: Schema.Boolean,
+  resume: ProviderCapabilityLevel,
+  subagents: ProviderCapabilityLevel,
+  attachments: ProviderCapabilityLevel,
+  replay: ProviderCapabilityLevel,
+  mcpConfig: ProviderCapabilityLevel,
 });
 export type ProviderCapabilities = typeof ProviderCapabilities.Type;
 
@@ -120,24 +128,44 @@ export const DEFAULT_PROVIDER_CAPABILITIES: Record<ProviderKind, ProviderCapabil
     supportsUserInput: true,
     supportsRollback: true,
     supportsFileChangeApproval: true,
+    resume: "full",
+    subagents: "none",
+    attachments: "basic",
+    replay: "full",
+    mcpConfig: "basic",
   },
   claudeAgent: {
     sessionModelSwitch: "in-session",
     supportsUserInput: true,
     supportsRollback: true,
     supportsFileChangeApproval: true,
+    resume: "basic",
+    subagents: "none",
+    attachments: "full",
+    replay: "full",
+    mcpConfig: "none",
   },
   cursor: {
     sessionModelSwitch: "restart-session",
     supportsUserInput: false,
     supportsRollback: false,
     supportsFileChangeApproval: false,
+    resume: "basic",
+    subagents: "none",
+    attachments: "basic",
+    replay: "full",
+    mcpConfig: "none",
   },
   opencode: {
-    sessionModelSwitch: "in-session",
+    sessionModelSwitch: "restart-session",
     supportsUserInput: true,
     supportsRollback: true,
     supportsFileChangeApproval: true,
+    resume: "basic",
+    subagents: "full",
+    attachments: "basic",
+    replay: "full",
+    mcpConfig: "basic",
   },
 };
 

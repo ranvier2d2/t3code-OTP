@@ -3,21 +3,124 @@ defmodule Harness.Metrics do
   Collects BEAM runtime metrics for stress testing.
 
   Exposes per-process memory, GC stats, scheduler utilization,
-  and SnapshotServer health — all the numbers needed to compare
-  OTP session isolation vs shared-heap runtimes.
+  SnapshotServer health, and session lifecycle counters — all
+  the numbers needed to compare OTP session isolation vs
+  shared-heap runtimes.
   """
 
+  use GenServer
+
+  # ---------------------------------------------------------------------------
+  # Public API
+  # ---------------------------------------------------------------------------
+
   @doc """
-  Collect a full metrics snapshot.
+  Start the Metrics counter server (linked to the calling process).
+  """
+  def start_link(_opts \\ []) do
+    GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
+  end
+
+  @doc """
+  Collect a full metrics snapshot, including lifecycle counters.
   """
   def collect do
+    counters = get_counters()
+
     %{
       beam: beam_metrics(),
       sessions: session_metrics(),
       snapshot_server: snapshot_server_metrics(),
+      lifecycle: counters,
       timestamp: System.system_time(:millisecond)
     }
   end
+
+  @doc """
+  Record a session start event for the given provider.
+  """
+  def record_session_start(provider) when is_binary(provider) do
+    safe_cast(:record, {:start, provider})
+  end
+
+  @doc """
+  Record a session end event for the given provider.
+  """
+  def record_session_end(provider) when is_binary(provider) do
+    safe_cast(:record, {:end, provider})
+  end
+
+  @doc """
+  Record a session resume event for the given provider.
+  """
+  def record_session_resume(provider) when is_binary(provider) do
+    safe_cast(:record, {:resume, provider})
+  end
+
+  @doc """
+  Record a turn duration sample (milliseconds) for the given provider.
+  """
+  def record_turn_duration(provider, duration_ms)
+      when is_binary(provider) and is_number(duration_ms) do
+    safe_cast(:record_duration, {provider, duration_ms})
+  end
+
+  @doc """
+  Return the current lifecycle counter map.
+  """
+  def get_counters do
+    if Process.whereis(__MODULE__) do
+      GenServer.call(__MODULE__, :get_counters)
+    else
+      default_counters()
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # GenServer callbacks
+  # ---------------------------------------------------------------------------
+
+  @impl true
+  def init(_opts) do
+    {:ok, default_counters()}
+  end
+
+  @impl true
+  def handle_cast({:record, {event, provider}}, state) do
+    key = counter_key(event, provider)
+    {:noreply, Map.update(state, key, 1, &(&1 + 1))}
+  end
+
+  def handle_cast({:record_duration, {provider, duration_ms}}, state) do
+    durations_key = "turn_durations.#{provider}"
+    existing = Map.get(state, durations_key, [])
+    # Keep last 100 samples to bound memory.
+    samples = Enum.take([duration_ms | existing], 100)
+    {:noreply, Map.put(state, durations_key, samples)}
+  end
+
+  @impl true
+  def handle_call(:get_counters, _from, state) do
+    {:reply, state, state}
+  end
+
+  # ---------------------------------------------------------------------------
+  # Private helpers
+  # ---------------------------------------------------------------------------
+
+  defp safe_cast(msg, payload) do
+    if Process.whereis(__MODULE__) do
+      GenServer.cast(__MODULE__, {msg, payload})
+    end
+
+    :ok
+  end
+
+  defp counter_key(:start, provider), do: "start_count.#{provider}"
+  defp counter_key(:end, provider), do: "end_count.#{provider}"
+  defp counter_key(:resume, provider), do: "resume_count.#{provider}"
+
+  defp default_counters, do: %{}
 
   # --- BEAM-level metrics ---
 

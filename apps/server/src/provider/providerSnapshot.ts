@@ -1,9 +1,11 @@
 import type {
+  ProviderCapabilities,
   ServerProvider,
   ServerProviderAuthStatus,
   ServerProviderModel,
   ServerProviderState,
 } from "@t3tools/contracts";
+import { DEFAULT_PROVIDER_CAPABILITIES } from "@t3tools/contracts";
 import { Effect, Stream } from "effect";
 import { normalizeModelSlug } from "@t3tools/shared/model";
 
@@ -108,6 +110,7 @@ export function buildServerProvider(input: {
   checkedAt: string;
   models: ReadonlyArray<ServerProviderModel>;
   probe: ProviderProbeResult;
+  capabilities?: ProviderCapabilities;
 }): ServerProvider {
   return {
     provider: input.provider,
@@ -119,6 +122,7 @@ export function buildServerProvider(input: {
     checkedAt: input.checkedAt,
     ...(input.probe.message ? { message: input.probe.message } : {}),
     models: input.models,
+    capabilities: input.capabilities ?? DEFAULT_PROVIDER_CAPABILITIES[input.provider],
   };
 }
 

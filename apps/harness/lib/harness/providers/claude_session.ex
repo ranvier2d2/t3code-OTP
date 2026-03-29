@@ -14,7 +14,10 @@ defmodule Harness.Providers.ClaudeSession do
   internally and returns an AsyncIterable. Here we spawn claude directly and
   parse its stdout JSON stream ourselves — same wire format, no SDK wrapper needed.
   """
+  @behaviour Harness.Providers.ProviderBehaviour
+
   use GenServer, restart: :temporary
+  @behaviour Harness.ProviderSession
 
   alias Harness.Event
 
@@ -41,6 +44,7 @@ defmodule Harness.Providers.ClaudeSession do
 
   # --- Public API ---
 
+  @impl Harness.Providers.ProviderBehaviour
   def start_link(opts) do
     thread_id = Map.fetch!(opts, :thread_id)
 
@@ -49,28 +53,39 @@ defmodule Harness.Providers.ClaudeSession do
     )
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def send_turn(pid, params) do
     GenServer.call(pid, {:send_turn, params}, 30_000)
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def interrupt_turn(pid, _thread_id, _turn_id) do
     GenServer.call(pid, :interrupt_turn)
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def respond_to_approval(pid, request_id, decision) do
     GenServer.call(pid, {:respond_to_approval, request_id, decision})
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def respond_to_user_input(pid, request_id, answers) do
     GenServer.call(pid, {:respond_to_user_input, request_id, answers})
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def read_thread(pid, _thread_id) do
     GenServer.call(pid, :read_thread, 30_000)
   end
 
+  @impl Harness.Providers.ProviderBehaviour
   def rollback_thread(pid, _thread_id, num_turns) do
     GenServer.call(pid, {:rollback_thread, num_turns}, 30_000)
+  end
+
+  @impl Harness.Providers.ProviderBehaviour
+  def stop(pid) do
+    GenServer.stop(pid, :normal)
   end
 
   def wait_for_ready(_pid, _timeout \\ 30_000) do

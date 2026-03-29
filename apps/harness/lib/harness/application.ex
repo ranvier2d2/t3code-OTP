@@ -13,6 +13,7 @@ defmodule Harness.Application do
       {Registry, keys: :unique, name: Harness.SessionRegistry},
       {DynamicSupervisor, name: Harness.SessionSupervisor, strategy: :one_for_one},
       Harness.Storage,
+      Harness.Metrics,
       Harness.SnapshotServer,
       HarnessWeb.Endpoint
     ]

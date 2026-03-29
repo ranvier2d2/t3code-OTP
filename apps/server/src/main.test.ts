@@ -15,6 +15,7 @@ import { CliConfig, recordStartupHeartbeat, t3Cli, type CliConfigShape } from ".
 import { ServerConfig, type ServerConfigShape } from "./config";
 import { Open, type OpenShape } from "./open";
 import { ProjectionSnapshotQuery } from "./orchestration/Services/ProjectionSnapshotQuery";
+import { McpConfigService } from "./provider/Services/McpConfig";
 import { AnalyticsService } from "./telemetry/Services/AnalyticsService";
 import { Server, type ServerShape } from "./wsServer";
 import { ServerSettingsService } from "./serverSettings";
@@ -55,6 +56,7 @@ const testLayer = Layer.mergeAll(
   } satisfies OpenShape),
   ServerSettingsService.layerTest(),
   AnalyticsService.layerTest,
+  McpConfigService.layerTest(),
   FetchHttpClient.layer,
   NodeServices.layer,
 );

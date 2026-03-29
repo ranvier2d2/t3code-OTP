@@ -9,6 +9,44 @@ import {
   type ProviderSessionDirectoryShape,
 } from "../Services/ProviderSessionDirectory.ts";
 
+// ---------------------------------------------------------------------------
+// adapter_key migration (Task 007 — codex-harness-only cutover)
+// ---------------------------------------------------------------------------
+
+/**
+ * Maps legacy adapter_key values to their harness equivalents.
+ * When the harness became the default for Codex, persisted sessions using the
+ * old direct-adapter key need to be transparently migrated on next load.
+ */
+const LEGACY_ADAPTER_KEY_MAP: Record<string, string> = {
+  codex: "harness:codex",
+};
+
+/** Track which threads have already logged their migration to avoid log spam. */
+const _migratedThreadIds = new Set<string>();
+
+/**
+ * If the persisted `adapterKey` is a legacy value, return the migrated key and
+ * log the migration for observability (once per thread per process lifetime).
+ * Otherwise return the key unchanged.
+ */
+function migrateAdapterKey(
+  adapterKey: string,
+  threadId: string,
+): { readonly key: string; readonly migrated: boolean } {
+  const mapped = LEGACY_ADAPTER_KEY_MAP[adapterKey];
+  if (mapped !== undefined) {
+    if (!_migratedThreadIds.has(threadId)) {
+      _migratedThreadIds.add(threadId);
+      console.log(
+        `[adapter_key_migration] thread=${threadId} old_key=${adapterKey} new_key=${mapped}`,
+      );
+    }
+    return { key: mapped, migrated: true };
+  }
+  return { key: adapterKey, migrated: false };
+}
+
 function toPersistenceError(operation: string) {
   return (cause: unknown) =>
     new ProviderSessionDirectoryPersistenceError({
@@ -61,17 +99,19 @@ const makeProviderSessionDirectory = Effect.gen(function* () {
           onNone: () => Effect.succeed(Option.none<ProviderRuntimeBinding>()),
           onSome: (value) =>
             decodeProviderKind(value.providerName, "ProviderSessionDirectory.getBinding").pipe(
-              Effect.map((provider) =>
-                Option.some({
+              Effect.map((provider) => {
+                // Migrate legacy adapter_key values (Task 007)
+                const { key: adapterKey } = migrateAdapterKey(value.adapterKey, value.threadId);
+                return Option.some({
                   threadId: value.threadId,
                   provider,
-                  adapterKey: value.adapterKey,
+                  adapterKey,
                   runtimeMode: value.runtimeMode,
                   status: value.status,
                   resumeCursor: value.resumeCursor,
                   runtimePayload: value.runtimePayload,
-                }),
-              ),
+                });
+              }),
             ),
         }),
       ),

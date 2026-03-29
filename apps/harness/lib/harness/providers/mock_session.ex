@@ -12,6 +12,7 @@ defmodule Harness.Providers.MockSession do
     - delayMs: delay between deltas in ms (default: 10)
   """
   use GenServer, restart: :temporary
+  @behaviour Harness.ProviderSession
 
   alias Harness.JsonRpc
   alias Harness.Event

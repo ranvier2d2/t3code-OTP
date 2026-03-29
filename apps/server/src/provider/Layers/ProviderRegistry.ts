@@ -9,6 +9,7 @@ import { Effect, Equal, Layer, PubSub, Ref, Stream } from "effect";
 import { ClaudeProviderLive } from "./ClaudeProvider";
 import { CodexProviderLive } from "./CodexProvider";
 import { CursorProviderLive, OpenCodeProviderLive } from "./HarnessProvider";
+import { HARNESS_PROVIDER_CAPABILITIES } from "../providerCapabilities.ts";
 import type { ClaudeProviderShape } from "../Services/ClaudeProvider";
 import { ClaudeProvider } from "../Services/ClaudeProvider";
 import type { CodexProviderShape } from "../Services/CodexProvider";
@@ -107,7 +108,20 @@ export const ProviderRegistryLive = Layer.effect(
 export const ProviderRegistryWithHarnessLive = Layer.effect(
   ProviderRegistry,
   Effect.gen(function* () {
-    const codexProvider: CodexProviderShape = yield* CodexProvider;
+    const codexProviderBase: CodexProviderShape = yield* CodexProvider;
+    const overrideWithHarnessCodexCapabilities = (provider: ServerProvider) => ({
+      ...provider,
+      capabilities: HARNESS_PROVIDER_CAPABILITIES.codex,
+    });
+    const codexProvider: CodexProviderShape = {
+      getSnapshot: codexProviderBase.getSnapshot.pipe(
+        Effect.map(overrideWithHarnessCodexCapabilities),
+      ),
+      refresh: codexProviderBase.refresh.pipe(Effect.map(overrideWithHarnessCodexCapabilities)),
+      streamChanges: codexProviderBase.streamChanges.pipe(
+        Stream.map(overrideWithHarnessCodexCapabilities),
+      ),
+    };
     const claudeProvider: ClaudeProviderShape = yield* ClaudeProvider;
     const cursorProvider: CursorProviderShape = yield* CursorProvider;
     const openCodeProvider: OpenCodeProviderShape = yield* OpenCodeProvider;

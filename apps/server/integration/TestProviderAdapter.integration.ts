@@ -19,6 +19,10 @@ import {
   ProviderAdapterValidationError,
   type ProviderAdapterError,
 } from "../src/provider/Errors.ts";
+import {
+  DIRECT_PROVIDER_CAPABILITIES,
+  HARNESS_PROVIDER_CAPABILITIES,
+} from "../src/provider/providerCapabilities.ts";
 import type {
   ProviderAdapterShape,
   ProviderThreadSnapshot,
@@ -240,6 +244,10 @@ export const makeTestProviderAdapterHarness = (options?: MakeTestProviderAdapter
     >();
 
     const emit = (event: ProviderRuntimeEvent) => Queue.offer(runtimeEvents, event);
+    const capabilities =
+      provider === "claudeAgent"
+        ? DIRECT_PROVIDER_CAPABILITIES[provider]
+        : HARNESS_PROVIDER_CAPABILITIES[provider];
 
     const startSession: ProviderAdapterShape<ProviderAdapterError>["startSession"] = (input) =>
       Effect.gen(function* () {
@@ -401,23 +409,42 @@ export const makeTestProviderAdapterHarness = (options?: MakeTestProviderAdapter
       requestId,
       decision,
     ) =>
-      sessions.has(threadId)
-        ? Effect.sync(() => {
-            const existing = approvalResponsesBySession.get(threadId) ?? [];
-            existing.push({
-              threadId,
-              requestId,
-              decision,
-            });
-            approvalResponsesBySession.set(threadId, existing);
-          })
-        : missingSessionEffect(provider, threadId);
+      !capabilities.supportsFileChangeApproval
+        ? Effect.fail(
+            new ProviderAdapterValidationError({
+              provider,
+              operation: "respondToRequest",
+              issue: `${provider} does not support approval responses.`,
+            }),
+          )
+        : sessions.has(threadId)
+          ? Effect.sync(() => {
+              const existing = approvalResponsesBySession.get(threadId) ?? [];
+              existing.push({
+                threadId,
+                requestId,
+                decision,
+              });
+              approvalResponsesBySession.set(threadId, existing);
+            })
+          : missingSessionEffect(provider, threadId);
 
     const respondToUserInput: ProviderAdapterShape<ProviderAdapterError>["respondToUserInput"] = (
       threadId,
       _requestId,
       _answers,
-    ) => (sessions.has(threadId) ? Effect.void : missingSessionEffect(provider, threadId));
+    ) =>
+      !capabilities.supportsUserInput
+        ? Effect.fail(
+            new ProviderAdapterValidationError({
+              provider,
+              operation: "respondToUserInput",
+              issue: `${provider} does not support structured user input.`,
+            }),
+          )
+        : sessions.has(threadId)
+          ? Effect.void
+          : missingSessionEffect(provider, threadId);
 
     const stopSession: ProviderAdapterShape<ProviderAdapterError>["stopSession"] = (threadId) =>
       Effect.sync(() => {
@@ -442,6 +469,15 @@ export const makeTestProviderAdapterHarness = (options?: MakeTestProviderAdapter
       threadId,
       numTurns,
     ) => {
+      if (!capabilities.supportsRollback) {
+        return Effect.fail(
+          new ProviderAdapterValidationError({
+            provider,
+            operation: "rollbackThread",
+            issue: `${provider} does not support rollback.`,
+          }),
+        );
+      }
       const state = sessions.get(threadId);
       if (!state) {
         return missingSessionEffect(provider, threadId);
@@ -474,12 +510,7 @@ export const makeTestProviderAdapterHarness = (options?: MakeTestProviderAdapter
 
     const adapter: ProviderAdapterShape<ProviderAdapterError> = {
       provider,
-      capabilities: {
-        sessionModelSwitch: provider === "cursor" ? "restart-session" : "in-session",
-        supportsUserInput: provider !== "cursor",
-        supportsRollback: provider !== "cursor",
-        supportsFileChangeApproval: provider !== "cursor",
-      },
+      capabilities,
       startSession,
       sendTurn,
       interruptTurn,
