@@ -81,14 +81,24 @@ defmodule Harness.Providers.OpenCodeRuntime do
     {:error, {:lease_failed, :retries_exhausted}}
   end
 
+  @lease_call_timeout 60_000
+
   defp do_lease_and_subscribe(key, params, thread_id, wrapper_pid, attempts_left) do
     case RuntimeRegistry.lookup(key) do
       {:ok, pid} ->
-        case GenServer.call(pid, {:lease_and_subscribe, key, thread_id, wrapper_pid}) do
-          :ok ->
-            {:ok, pid}
+        try do
+          case GenServer.call(pid, {:lease_and_subscribe, key, thread_id, wrapper_pid}, @lease_call_timeout) do
+            :ok ->
+              {:ok, pid}
 
-          {:error, :not_found} ->
+            {:error, :not_found} ->
+              do_lease_and_subscribe(key, params, thread_id, wrapper_pid, attempts_left - 1)
+          end
+        catch
+          :exit, {:noproc, _} ->
+            do_lease_and_subscribe(key, params, thread_id, wrapper_pid, attempts_left - 1)
+
+          :exit, {:timeout, _} ->
             do_lease_and_subscribe(key, params, thread_id, wrapper_pid, attempts_left - 1)
         end
 
@@ -273,7 +283,8 @@ defmodule Harness.Providers.OpenCodeRuntime do
 
       {:error, :timeout} ->
         Logger.error("OpenCode runtime failed to start on port #{state.opencode_port}")
-        {:stop, :server_timeout, state}
+        Enum.each(state.ready_waiters, &GenServer.reply(&1, {:error, :server_timeout}))
+        {:stop, :server_timeout, %{state | ready_waiters: []}}
     end
   end
 
@@ -292,8 +303,11 @@ defmodule Harness.Providers.OpenCodeRuntime do
       end)
     end
 
+    # Reply to any callers still waiting for ready
+    Enum.each(state.ready_waiters, &GenServer.reply(&1, {:error, {:runtime_exited, status}}))
+
     RuntimeRegistry.unregister(state.runtime_key)
-    {:stop, :normal, state}
+    {:stop, :normal, %{state | ready_waiters: []}}
   end
 
   # SSE chunks from the Req streaming listener
@@ -428,21 +442,31 @@ defmodule Harness.Providers.OpenCodeRuntime do
   # without cleanup.
   @impl true
   def handle_call({:lease_and_subscribe, key, thread_id, wrapper_pid}, _from, state) do
-    if Map.has_key?(state.subscribers, thread_id) do
-      # Already subscribed — skip to avoid double monitor / ref count leak
-      {:reply, :ok, state}
-    else
-      case RuntimeRegistry.increment_ref(key) do
-        {:ok, _count} ->
-          Process.monitor(wrapper_pid)
-          subscribers = Map.put(state.subscribers, thread_id, wrapper_pid)
-          state = %{state | subscribers: subscribers}
-          state = cancel_idle_timer(state)
-          {:reply, :ok, state}
+    case Map.get(state.subscribers, thread_id) do
+      ^wrapper_pid ->
+        # Same PID already subscribed — no-op
+        {:reply, :ok, state}
 
-        {:error, :not_found} ->
-          {:reply, {:error, :not_found}, state}
-      end
+      old_pid when is_pid(old_pid) ->
+        # Restarted wrapper with same thread_id — demonitor old, monitor new.
+        # Don't increment ref count (the lease is being transferred, not added).
+        Process.demonitor(Process.monitor(old_pid), [:flush])
+        Process.monitor(wrapper_pid)
+        subscribers = Map.put(state.subscribers, thread_id, wrapper_pid)
+        state = cancel_idle_timer(%{state | subscribers: subscribers})
+        {:reply, :ok, state}
+
+      nil ->
+        case RuntimeRegistry.increment_ref(key) do
+          {:ok, _count} ->
+            Process.monitor(wrapper_pid)
+            subscribers = Map.put(state.subscribers, thread_id, wrapper_pid)
+            state = cancel_idle_timer(%{state | subscribers: subscribers})
+            {:reply, :ok, state}
+
+          {:error, :not_found} ->
+            {:reply, {:error, :not_found}, state}
+        end
     end
   end
 
@@ -450,14 +474,22 @@ defmodule Harness.Providers.OpenCodeRuntime do
   # register/2 already set ref_count to 1.
   @impl true
   def handle_call({:subscribe_initial, thread_id, wrapper_pid}, _from, state) do
-    if Map.has_key?(state.subscribers, thread_id) do
-      {:reply, :ok, state}
-    else
-      Process.monitor(wrapper_pid)
-      subscribers = Map.put(state.subscribers, thread_id, wrapper_pid)
-      state = %{state | subscribers: subscribers}
-      state = cancel_idle_timer(state)
-      {:reply, :ok, state}
+    case Map.get(state.subscribers, thread_id) do
+      ^wrapper_pid ->
+        {:reply, :ok, state}
+
+      old_pid when is_pid(old_pid) ->
+        Process.demonitor(Process.monitor(old_pid), [:flush])
+        Process.monitor(wrapper_pid)
+        subscribers = Map.put(state.subscribers, thread_id, wrapper_pid)
+        state = cancel_idle_timer(%{state | subscribers: subscribers})
+        {:reply, :ok, state}
+
+      nil ->
+        Process.monitor(wrapper_pid)
+        subscribers = Map.put(state.subscribers, thread_id, wrapper_pid)
+        state = cancel_idle_timer(%{state | subscribers: subscribers})
+        {:reply, :ok, state}
     end
   end
 
@@ -1002,7 +1034,7 @@ defmodule Harness.Providers.OpenCodeRuntime do
         case RuntimeRegistry.register(key, pid) do
           :ok ->
             # register/2 sets ref_count=1 — subscribe without incrementing
-            GenServer.call(pid, {:subscribe_initial, thread_id, wrapper_pid})
+            GenServer.call(pid, {:subscribe_initial, thread_id, wrapper_pid}, @lease_call_timeout)
             {:ok, pid}
 
           {:error, :already_registered} ->

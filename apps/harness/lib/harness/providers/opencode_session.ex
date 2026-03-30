@@ -217,6 +217,9 @@ defmodule Harness.Providers.OpenCodeSession do
   def handle_info({:runtime_sse_degraded, _pid}, state) do
     Logger.warning("Runtime SSE degraded for thread #{state.thread_id} — live events unavailable")
 
+    # Fail any in-flight turn — without SSE events it will hang forever
+    state = maybe_complete_turn(state, "failed")
+
     emit_event(state, :session, "session/degraded", %{
       "reason" => "sse_reconnect_exhausted"
     })
@@ -703,13 +706,13 @@ defmodule Harness.Providers.OpenCodeSession do
   defp event_relevant?(%{"data" => data}, state) when is_map(data) do
     session_id = state.opencode_session_id
 
-    # Check common locations for session association in OpenCode events
+    # Check explicit session association fields only — generic data["id"]
+    # is an object identifier (message, item), not a session identifier.
     event_session =
       Map.get(data, "sessionId") ||
         Map.get(data, "session_id") ||
-        Map.get(data, "id") ||
-        get_in(data, ["info", "id"]) ||
-        get_in(data, ["info", "parentID"])
+        get_in(data, ["info", "parentID"]) ||
+        get_in(data, ["info", "id"])
 
     # If the event has a session identifier, check it matches ours.
     # If no session identifier found, pass through (could be a message-level event

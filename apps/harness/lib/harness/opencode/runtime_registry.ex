@@ -101,7 +101,7 @@ defmodule Harness.OpenCode.RuntimeRegistry do
 
   @impl true
   def init(_opts) do
-    table = :ets.new(@table, [:named_table, :set, :public, read_concurrency: true])
+    table = :ets.new(@table, [:named_table, :set, :protected, read_concurrency: true])
     {:ok, %{table: table, monitors: %{}}}
   end
 
