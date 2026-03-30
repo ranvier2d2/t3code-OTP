@@ -574,6 +574,13 @@ function mapItemLifecycle(
   };
 }
 
+/**
+ * Converts a raw provider event into zero or more normalized runtime events for the given thread.
+ *
+ * @param event - The provider-originating event to convert
+ * @param canonicalThreadId - The runtime thread id to associate with produced events
+ * @returns A readonly array of produced `ProviderRuntimeEvent` objects; empty when the provider event does not map to any runtime event
+ */
 function mapToRuntimeEvents(
   event: ProviderEvent,
   canonicalThreadId: ThreadId,
@@ -631,7 +638,12 @@ function mapToRuntimeEvents(
   }
 
   if (event.method === "item/requestApproval/decision" && event.requestId) {
-    const decision = Schema.decodeUnknownSync(ProviderApprovalDecision)(payload?.decision);
+    let decision: typeof ProviderApprovalDecision.Type | undefined;
+    try {
+      decision = Schema.decodeUnknownSync(ProviderApprovalDecision)(payload?.decision);
+    } catch {
+      decision = undefined;
+    }
     const requestType =
       event.requestKind !== undefined
         ? toRequestTypeFromKind(event.requestKind)

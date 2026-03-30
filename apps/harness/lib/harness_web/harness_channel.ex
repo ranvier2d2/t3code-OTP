@@ -307,9 +307,30 @@ defmodule HarnessWeb.HarnessChannel do
   end
 
   @impl true
+  @doc """
+  Handle the "events.replay" command when the required `afterSeq` integer parameter is missing or invalid.
+  
+  Responds with an error reply indicating the missing or invalid `afterSeq` parameter; the incoming params are ignored and the socket is returned unchanged.
+  """
+  @spec handle_in(String.t(), map(), Phoenix.Socket.t()) ::
+          {:reply, {:error, %{message: String.t()}}, Phoenix.Socket.t()}
   def handle_in("events.replay", _params, socket) do
     {:reply, {:error, %{message: "Missing or invalid required param: afterSeq (integer)"}},
      socket}
+  end
+
+  # Catch-all for unrecognized commands — return an explicit error so the
+  # Node client gets an immediate phx_reply instead of hanging for 30s.
+  @impl true
+  @doc """
+  Handles any unrecognized incoming channel command by replying with an explicit error message.
+  
+  Replies with an error tuple containing the message "Unknown command: <event>" where `<event>` is the incoming event.
+  """
+  @spec handle_in(term(), term(), Phoenix.Socket.t()) ::
+          {:reply, {:error, %{message: String.t()}}, Phoenix.Socket.t()}
+  def handle_in(event, _params, socket) do
+    {:reply, {:error, %{message: "Unknown command: #{event}"}}, socket}
   end
 
   # --- PubSub → Channel Push ---
