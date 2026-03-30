@@ -1,62 +1,35 @@
 # AGENTS.md
 
-## Task Completion Requirements
+## What This Repo Is
 
-- All of `bun fmt`, `bun lint`, and `bun typecheck` must pass before considering tasks completed.
-- NEVER run `bun test`. Always use `bun run test` (runs Vitest).
+- This repo is the T3 Code monorepo: a Bun/Turbo workspace for the desktop shell, server runtime, web client, contracts, shared utilities, and the OTP harness pilot.
+- Primary boundaries live in `apps/server`, `apps/web`, `packages/contracts`, `packages/shared`, and `apps/harness`.
 
-## Project Snapshot
+## Repository Expectations
 
-T3 Code is a minimal web GUI for using coding agents like Codex and Claude.
+- Keep changes scoped to the layer that owns the behavior. Do not push runtime logic into `packages/contracts`.
+- Prefer root-cause fixes over local patches. If similar logic exists in multiple packages, extract or consolidate it.
+- Preserve predictable behavior under reconnects, partial streams, session restarts, and provider failures.
+- Keep `CursorSession` fallback paths until ACP replacements are proven end to end.
 
-This repository is a VERY EARLY WIP. Proposing sweeping changes that improve long-term maintainability is encouraged.
+## Validation Gates
 
-## Core Priorities
+- Required before completion: `bun fmt`, `bun lint`, `bun typecheck`
+- Do not run `bun test`. Use `bun run test` if tests are needed at the workspace level.
+- For `apps/harness`, run `mix precommit` from `apps/harness` when Elixir files change.
 
-1. Performance first.
-2. Reliability first.
-3. Keep behavior predictable under load and during failures (session restarts, reconnects, partial streams).
+## Architecture Map
 
-If a tradeoff is required, choose correctness and robustness over short-term convenience.
+- `apps/server`: Node/Bun server runtime. Owns provider processes, WebSocket APIs, session orchestration, and desktop-facing backend behavior.
+- `apps/web`: React/Vite frontend. Owns session UX, event rendering, local state, and browser interaction flows.
+- `apps/harness`: Phoenix/OTP harness pilot. Owns provider GenServers, supervision, ports, and Elixir-side protocol adapters.
+- `packages/contracts`: Shared schemas and TypeScript contracts only. No app runtime logic.
+- `packages/shared`: Shared runtime helpers used by server and web through explicit subpath exports.
+- `ai_docs`: planning docs, task writeups, and architecture notes. Keep these aligned with shipped behavior.
 
-## Maintainability
+## Guardrails
 
-Long term maintainability is a core priority. If you add new functionality, first check if there is shared logic that can be extracted to a separate module. Duplicate logic across multiple files is a code smell and should be avoided. Don't be afraid to change existing code. Don't take shortcuts by just adding local logic to solve a problem.
-
-## Package Roles
-
-- `apps/server`: Node.js WebSocket server. Wraps Codex app-server (JSON-RPC over stdio), serves the React web app, and manages provider sessions.
-- `apps/web`: React/Vite UI. Owns session UX, conversation/event rendering, and client-side state. Connects to the server via WebSocket.
-- `packages/contracts`: Shared effect/Schema schemas and TypeScript contracts for provider events, WebSocket protocol, and model/session types. Keep this package schema-only — no runtime logic.
-- `packages/shared`: Shared runtime utilities consumed by both server and web. Uses explicit subpath exports (e.g. `@t3tools/shared/git`) — no barrel index.
-
-## Codex App Server (Important)
-
-T3 Code is currently Codex-first. The server starts `codex app-server` (JSON-RPC over stdio) per provider session, then streams structured events to the browser through WebSocket push messages.
-
-How we use it in this codebase:
-
-- Session startup/resume and turn lifecycle are brokered in `apps/server/src/codexAppServerManager.ts`.
-- Provider dispatch and thread event logging are coordinated in `apps/server/src/providerManager.ts`.
-- WebSocket server routes NativeApi methods in `apps/server/src/wsServer.ts`.
-- Web app consumes orchestration domain events via WebSocket push on channel `orchestration.domainEvent` (provider runtime activity is projected into orchestration events server-side).
-
-Docs:
-
-- Codex App Server docs: https://developers.openai.com/codex/sdk/#app-server
-
-## Reference Repos
-
-- Open-source Codex repo: https://github.com/openai/codex
-- Codex-Monitor (Tauri, feature-complete, strong reference implementation): https://github.com/Dimillian/CodexMonitor
-
-Use these as implementation references when designing protocol handling, UX flows, and operational safeguards.
-
-## QA Testing
-
-When validating the T3Code UI with Playwright:
-
-- Assume the dev stack is already running externally when the user provides a local URL.
-- Never execute startup scripts such as `dev-harness.sh`, `dev-runner`, `pixi run dev`, `bun dev`, or equivalent server boot commands unless the user explicitly asks for it.
-- Connect directly to the user-provided URL for browser validation.
-- Default local UI target: `http://localhost:5734`
+- Prefer existing workspace tools and libraries. Do not add new dependencies unless the current stack cannot solve the problem cleanly.
+- Keep generated output out of instruction files and repo docs unless the user asked for committed artifacts.
+- When validating UI with Playwright, assume the dev stack is already running unless the user explicitly asks you to start it.
+- Default local UI target for browser validation is `http://localhost:5734`.

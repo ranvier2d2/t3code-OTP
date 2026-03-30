@@ -68,6 +68,9 @@ const PHX_LEAVE = "phx_leave"; // eslint-disable-line @typescript-eslint/no-unus
 const HEARTBEAT_EVENT = "heartbeat";
 
 const REQUEST_TIMEOUT_MS = 30_000;
+// Session start blocks on Elixir's wait_for_ready (60s). Give Node 65s so it
+// never times out before the harness does.
+const SESSION_START_TIMEOUT_MS = 65_000;
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const RECONNECT_DELAYS_MS = [1_000, 2_000, 4_000, 8_000];
 
@@ -134,8 +137,13 @@ export class HarnessClientManager {
   // Commands
   // -------------------------------------------------------------------------
 
-  startSession(params: Record<string, unknown>): Promise<unknown> {
-    return this.push("session.start", params);
+  async startSession(params: Record<string, unknown>): Promise<unknown> {
+    const result = await this.push("session.start", params, SESSION_START_TIMEOUT_MS);
+    // Phoenix replies {:ok, %{session: session}} — unwrap the envelope.
+    if (result && typeof result === "object" && "session" in result) {
+      return (result as Record<string, unknown>).session;
+    }
+    return result;
   }
 
   sendTurn(threadId: string, params: Record<string, unknown>): Promise<unknown> {
@@ -569,7 +577,11 @@ export class HarnessClientManager {
    * Send an event to the channel and return a Promise that resolves with the
    * server's reply response payload (or rejects on error/timeout).
    */
-  private push(event: string, params: Record<string, unknown>): Promise<unknown> {
+  private push(
+    event: string,
+    params: Record<string, unknown>,
+    timeoutMs?: number,
+  ): Promise<unknown> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN || !this.channelJoined) {
       return Promise.reject(
         new Error(
@@ -581,7 +593,7 @@ export class HarnessClientManager {
     const ref = this.nextRef();
     // Phoenix requires the join_ref on all channel messages
     const frame = this.buildFrame(this.joinRef, ref, CHANNEL_TOPIC, event, params);
-    const promise = this.pendingRequest(ref);
+    const promise = this.pendingRequest(ref, timeoutMs);
     this.sendRaw(frame);
     return promise;
   }
@@ -590,18 +602,17 @@ export class HarnessClientManager {
    * Register a pending request for the given ref and return its promise.
    * The promise rejects automatically after REQUEST_TIMEOUT_MS.
    */
-  private pendingRequest(ref: string): Promise<unknown> {
+  private pendingRequest(ref: string, timeoutMs?: number): Promise<unknown> {
+    const timeout = timeoutMs ?? REQUEST_TIMEOUT_MS;
     return new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
         if (this.pending.has(ref)) {
           this.pending.delete(ref);
           reject(
-            new Error(
-              `HarnessClientManager: request ref='${ref}' timed out after ${REQUEST_TIMEOUT_MS}ms`,
-            ),
+            new Error(`HarnessClientManager: request ref='${ref}' timed out after ${timeout}ms`),
           );
         }
-      }, REQUEST_TIMEOUT_MS);
+      }, timeout);
 
       this.pending.set(ref, { resolve, reject, timer });
     });

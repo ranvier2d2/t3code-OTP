@@ -1,0 +1,3 @@
+{"_tag":"Request","id":"","tag":"session/update","payload":{"sessionId":"session-1","update":{"sessionUpdate":{"_tag":"tool_call","toolCallId":"tool-1","title":"Run shell command","kind":"shell","status":"in_progress","rawInput":"ls","content":[{"type":"text","text":"running ls"}]}}},"headers":[]}
+{"_tag":"Request","id":"","tag":"session/update","payload":{"sessionId":"session-1","update":{"sessionUpdate":{"_tag":"tool_call_update","toolCallId":"tool-1","title":"Run shell command","kind":"shell","status":"completed","rawOutput":"file1\nfile2","content":[{"type":"text","text":"command finished"}]}}},"headers":[]}
+{"_tag":"Exit","requestId":"12","exit":{"_tag":"Success","value":{"turnId":"turn-2","usage":{"inputTokens":12,"outputTokens":24}}}}

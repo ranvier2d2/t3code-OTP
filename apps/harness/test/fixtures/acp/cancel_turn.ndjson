@@ -1,0 +1,2 @@
+{"_tag":"Request","id":"","tag":"session/update","payload":{"sessionId":"session-1","update":{"sessionUpdate":{"_tag":"agent_message_chunk","content":{"type":"text","text":"Partial output"},"messageId":"msg-cancel"}}},"headers":[]}
+{"_tag":"Exit","requestId":"13","exit":{"_tag":"Failure","cause":[{"_tag":"Interrupt","fiberId":"fiber-cancel"}]}}

@@ -39,6 +39,26 @@ defmodule Harness.JsonRpc do
   end
 
   @doc """
+  Encode a JSON-RPC error response.
+  """
+  def encode_error_response(id, code, message, data \\ nil) do
+    error =
+      %{
+        "code" => code,
+        "message" => message
+      }
+      |> then(fn error ->
+        if is_nil(data), do: error, else: Map.put(error, "data", data)
+      end)
+
+    Jason.encode!(%{
+      "jsonrpc" => "2.0",
+      "id" => id,
+      "error" => error
+    })
+  end
+
+  @doc """
   Decode a JSON-RPC message from a line of text.
   Returns {:request, id, method, params} | {:notification, method, params} |
           {:response, id, result} | {:error_response, id, error} | {:error, reason}
@@ -56,6 +76,9 @@ defmodule Harness.JsonRpc do
 
       {:ok, %{"id" => id, "error" => error}} ->
         {:error_response, id, error}
+
+      {:ok, _msg} ->
+        {:error, :invalid_message}
 
       {:error, reason} ->
         {:error, reason}

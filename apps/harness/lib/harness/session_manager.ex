@@ -14,6 +14,7 @@ defmodule Harness.SessionManager do
   alias Harness.Providers.ClaudeSession
   alias Harness.Providers.OpenCodeSession
   alias Harness.Providers.CursorSession
+  alias Harness.Providers.AcpSession
 
   @doc """
   Start a new provider session.
@@ -370,7 +371,15 @@ defmodule Harness.SessionManager do
   defp provider_module("codex"), do: {:ok, CodexSession}
   defp provider_module("claudeAgent"), do: {:ok, ClaudeSession}
   defp provider_module("opencode"), do: {:ok, OpenCodeSession}
-  defp provider_module("cursor"), do: {:ok, CursorSession}
+
+  defp provider_module("cursor") do
+    if Application.get_env(:harness, :cursor_acp_enabled, false) do
+      {:ok, AcpSession}
+    else
+      {:ok, CursorSession}
+    end
+  end
+
   defp provider_module("mock"), do: {:ok, Harness.Providers.MockSession}
   defp provider_module(other), do: {:error, "Unsupported provider: #{other}"}
 end
