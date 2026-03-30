@@ -14,4 +14,22 @@ defmodule Harness.Providers.OpenCodeSessionTest do
     assert function_exported?(OpenCodeSession, :read_thread, 2)
     assert function_exported?(OpenCodeSession, :rollback_thread, 3)
   end
+
+  test "exports stop/1 callback" do
+    assert function_exported?(OpenCodeSession, :stop, 1)
+  end
+
+  test "struct has runtime-related fields (Sprint 2 shared runtime)" do
+    session = %OpenCodeSession{}
+    assert Map.has_key?(session, :runtime_key)
+    assert Map.has_key?(session, :runtime_pid)
+    assert Map.has_key?(session, :runtime_ref)
+    assert Map.has_key?(session, :opencode_session_id)
+    # These fields should NOT exist after Sprint 2 refactor (moved to OpenCodeRuntime)
+    refute Map.has_key?(session, :port)
+    refute Map.has_key?(session, :opencode_port)
+    refute Map.has_key?(session, :sse_pid)
+    refute Map.has_key?(session, :base_url)
+    refute Map.has_key?(session, :binary_path)
+  end
 end
