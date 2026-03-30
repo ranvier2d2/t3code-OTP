@@ -196,6 +196,37 @@ it.effect("resolveConfig normalizes transport type aliases", () => {
   }).pipe(Effect.provide(makeTestLayer(ctx)));
 });
 
+it.effect("resolveConfig preserves remote headers and timeout", () => {
+  const ctx = makeTempContext();
+  writeProjectConfig(ctx.cwd, {
+    mcp: {
+      Ref: {
+        type: "remote",
+        url: "https://api.ref.tools/mcp",
+        headers: {
+          "x-ref-api-key": "ref-123",
+        },
+        timeout: 2500,
+        enabled: true,
+      },
+    },
+  });
+
+  return Effect.gen(function* () {
+    const service = yield* McpConfigService;
+    const config = yield* service.resolveConfig({ provider: "opencode", cwd: ctx.cwd });
+
+    assert.equal(config.servers.length, 1);
+    const remote = config.servers[0]!;
+    assert.equal(remote.transport, "http");
+    if (remote.transport !== "http" && remote.transport !== "sse") {
+      assert.fail("expected remote MCP transport");
+    }
+    assert.deepEqual(remote.headers, { "x-ref-api-key": "ref-123" });
+    assert.equal(remote.timeout, 2500);
+  }).pipe(Effect.provide(makeTestLayer(ctx)));
+});
+
 // ── Snapshots ────────────────────────────────────────────────────
 
 it.effect("resolveConfig auto-persists snapshot when threadId is provided", () => {

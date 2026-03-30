@@ -1992,6 +1992,46 @@ describe("ProviderRuntimeIngestion", () => {
     });
   });
 
+  it("projects MCP servers from session.configured into normalized thread activities", async () => {
+    const harness = await createHarness();
+    const now = new Date().toISOString();
+
+    harness.emit({
+      type: "session.configured",
+      eventId: asEventId("evt-session-configured-mcp"),
+      provider: "claudeAgent",
+      createdAt: now,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-mcp-1"),
+      payload: {
+        config: {
+          mcp_servers: [
+            { name: "claude.ai Ref.tools", status: "connected" },
+            { name: "claude.ai OpenAI Documentation", status: "pending" },
+            { name: "claude.ai Google Calendar", status: "needs-auth" },
+          ],
+        },
+      },
+    });
+
+    const thread = await waitForThread(harness.engine, (entry) =>
+      entry.activities.some(
+        (activity: ProviderRuntimeTestActivity) =>
+          activity.id === "evt-session-configured-mcp:mcp:2",
+      ),
+    );
+
+    expect(
+      thread.activities
+        .filter((activity: ProviderRuntimeTestActivity) => activity.kind === "mcp.status.updated")
+        .map((activity: ProviderRuntimeTestActivity) => activity.payload),
+    ).toEqual([
+      { server: "ref", status: { state: "ready" } },
+      { server: "openaiDeveloperDocs", status: { state: "starting" } },
+      { server: "Google Calendar", status: { state: "failed" } },
+    ]);
+  });
+
   it("projects Codex camelCase token usage payloads into normalized thread activities", async () => {
     const harness = await createHarness();
     const now = new Date().toISOString();

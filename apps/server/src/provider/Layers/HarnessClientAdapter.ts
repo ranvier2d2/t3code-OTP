@@ -49,7 +49,12 @@ import {
 } from "../Services/HarnessClientAdapter.ts";
 import { HARNESS_PROVIDER_CAPABILITIES } from "../providerCapabilities.ts";
 import { McpConfigService } from "../Services/McpConfig.ts";
-import { generatedMcpDir, mergeCodexToml, openCodeConfigFromResolved } from "../mcpTranslation.ts";
+import {
+  claudeConfigFromResolved,
+  generatedMcpDir,
+  mergeCodexToml,
+  openCodeConfigFromResolved,
+} from "../mcpTranslation.ts";
 import { type HarnessRawEvent, HarnessClientManager } from "./HarnessClientManager.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
@@ -1150,6 +1155,21 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
                         );
                         return {
                           opencode: {
+                            configPath,
+                          },
+                        };
+                      }
+                      case "claudeAgent": {
+                        const generatedDir = generatedMcpDir(
+                          serverConfig.stateDir,
+                          "claudeAgent",
+                          input.threadId,
+                        );
+                        fs.mkdirSync(generatedDir, { recursive: true });
+                        const configPath = path.join(generatedDir, ".mcp.json");
+                        fs.writeFileSync(configPath, claudeConfigFromResolved(resolvedMcp), "utf8");
+                        return {
+                          claudeAgent: {
                             configPath,
                           },
                         };

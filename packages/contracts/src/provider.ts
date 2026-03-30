@@ -95,6 +95,8 @@ const McpRemoteServerConfig = Schema.Struct({
   transport: McpRemoteTransport,
   url: TrimmedNonEmptyString,
   env: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  headers: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  timeout: Schema.optional(Schema.Number),
   enabled: Schema.Boolean,
 });
 

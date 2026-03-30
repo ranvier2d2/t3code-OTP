@@ -41,6 +41,10 @@ function asStringRecord(value: unknown): Record<string, string> | undefined {
   return Object.fromEntries(entries) as Record<string, string>;
 }
 
+function asPositiveNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
 function normalizeTransport(value: RawRecord): "stdio" | "http" | "sse" {
   const explicit = asString(value.transport);
   if (explicit === "stdio" || explicit === "http" || explicit === "sse") {
@@ -63,7 +67,9 @@ function normalizeServer(name: string, rawValue: unknown): McpServerConfig | und
   const command = asString(raw.command)?.trim();
   const args = asStringArray(raw.args);
   const env = asStringRecord(raw.env);
+  const headers = asStringRecord(raw.headers);
   const url = asString(raw.url)?.trim();
+  const timeout = asPositiveNumber(raw.timeout);
   const enabled = raw.enabled !== false;
 
   if (transport === "stdio" && !command) {
@@ -89,6 +95,8 @@ function normalizeServer(name: string, rawValue: unknown): McpServerConfig | und
     transport,
     url: url!,
     ...(env ? { env } : {}),
+    ...(headers ? { headers } : {}),
+    ...(timeout !== undefined ? { timeout } : {}),
     enabled,
   };
 }
