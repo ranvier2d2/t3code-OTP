@@ -7,6 +7,12 @@
 Integrate Devin as a first-class provider in T3Code-OTP using the existing server-side provider architecture in `apps/server`, without introducing a new runtime path in `apps/harness`. The implementation should let users select Devin from the existing provider/model UX, start and continue Devin-backed sessions through `ProviderService`, and surface Devin session state safely under reconnects, restarts, and partial polling windows.
 
 > **Important:** Devin's current documented API is an org-scoped REST API built around session creation, polling, paginated message retrieval, and attachments. It is not documented as a bidirectional streaming protocol, and I did not find a documented endpoint for resolving approval or structured user-input requests programmatically. The MVP plan must respect that reduced capability surface.
+>
+> **Implementation constraints:**
+>
+> - Keep Devin on the existing canonical `ProviderRuntimeEvent` model if at all possible. Adding Devin-specific runtime event variants would create disproportionate churn across `ProviderRuntimeIngestion`, `CheckpointReactor`, ws fanout, and UI rendering.
+> - Treat **lazy remote binding** as a core adapter invariant: a local T3 provider session may exist before any remote Devin session exists.
+> - The main technical risk is **idempotent polling + replay suppression** across reconnects, restarts, and partial pagination windows. Endpoint wiring is the easy part.
 
 ## Why
 
@@ -130,16 +136,19 @@ These files assume a finite set of providers and will need Devin added explicitl
 
 - Create session:
   - `POST /v3/organizations/{org_id}/sessions`
-  - body supports `prompt`, `attachment_urls`, `bypass_approval`, `playbook_id`, `knowledge_ids`, `tags`, `title`, `create_as_user_id`, and more
+  - body supports `prompt`, `attachment_urls`, `bypass_approval`, `playbook_id`, `knowledge_ids`, `tags`, `title`, `create_as_user_id`, `structured_output_schema`, and more
 - Get session:
   - `GET /v3/organizations/{org_id}/sessions/{devin_id}`
-  - returns `status`, `status_detail`, `structured_output`, PRs, tags, timestamps
+  - returns `status`, `status_detail`, `structured_output`, `url`, `is_archived`, `child_session_ids`, `parent_session_id`, PRs, tags, timestamps
 - Send message:
   - `POST /v3/organizations/{org_id}/sessions/{devin_id}/messages`
   - documented body: `message`, optional `message_as_user_id`
+  - documented behavior: suspended sessions are automatically resumed when a message is sent
 - List session messages:
   - `GET /v3/organizations/{org_id}/sessions/{devin_id}/messages`
   - paginated with `first` and `after`
+  - documented as ordered chronologically
+  - documented item shape is narrow: `{ created_at, event_id, message, source }`
 - Terminate session:
   - documented as `DELETE /v3/organizations/{org_id}/sessions/{devin_id}`
 - Archive session:
@@ -159,6 +168,7 @@ These files assume a finite set of providers and will need Devin added explicitl
 - Devin's own common flow recommends polling `GET session` and `GET session messages`
 - Pagination uses `first` + `after`
 - list responses return `items`, `has_next_page`, `end_cursor`, `total`
+- docs explicitly say `end_cursor` should be passed back as `after` for the next page
 
 ### Important documented status details
 
@@ -170,6 +180,18 @@ These files assume a finite set of providers and will need Devin added explicitl
   - `waiting_for_user`
   - `waiting_for_approval`
   - `finished`
+- `status_detail` while suspended:
+  - `inactivity`
+  - `user_request`
+  - `usage_limit_exceeded`
+  - `out_of_credits`
+  - `out_of_quota`
+  - `no_quota_allocation`
+  - `payment_declined`
+  - `org_usage_limit_exceeded`
+  - `error`
+
+The suspended-context values matter for UX and retry policy. Billing/quota failures should not be treated the same as "resolve in Devin UI" states.
 
 ### Critical gaps in documented API
 
@@ -205,6 +227,8 @@ Add Devin with conservative defaults:
 
 Treat Devin as a provider with one synthetic default model in MVP, for example `devin-default`, unless later docs show a real model-selection API. This keeps the UI and settings model consistent without implying unsupported server behavior.
 
+For MVP UX, assume the model picker remains visible but only exposes one effective Devin model option. Model switching should be treated as unsupported, not as a hidden best-effort behavior.
+
 ## UX and Operational Decisions
 
 ### Lazy remote session creation
@@ -236,6 +260,8 @@ This means the first remote failure may surface on the first `sendTurn`, not dur
 - keeps session creation aligned with a concrete user prompt
 - reduces remote resource churn
 
+Because `POST .../messages` automatically resumes suspended sessions, follow-up `sendTurn` does not need a separate resume action in MVP. The adapter should rely on documented send-message semantics rather than synthesizing an explicit resume step.
+
 ### User flow for unresolvable Devin states
 
 Devin can enter `waiting_for_approval` and `waiting_for_user`, but the documented API does not show a response surface for T3 to resolve those states directly.
@@ -255,8 +281,6 @@ The Devin UI path must never show an approval widget or structured user-input co
 
 ## Files to Create
 
-- `apps/server/src/provider/Services/DevinProvider.ts`
-- `apps/server/src/provider/Services/DevinAdapter.ts`
 - `apps/server/src/provider/Layers/DevinProvider.ts`
 - `apps/server/src/provider/Layers/DevinAdapter.ts`
 - `apps/server/src/provider/Layers/DevinAdapter.test.ts`
@@ -265,6 +289,15 @@ The Devin UI path must never show an approval widget or structured user-input co
   - REST helpers, endpoint wrappers, response normalization
 - `apps/server/src/provider/devinApi.test.ts`
 - `ai_docs/tasks/007_devin_provider_integration.md`
+
+Do not add extra `Services/Devin*.ts` files unless they buy a concrete seam that the existing layer pattern does not already provide. A lean first pass should prefer:
+
+- `provider/devinApi.ts`
+- `Layers/DevinProvider.ts`
+- `Layers/DevinAdapter.ts`
+- tests
+
+The current server provider stack already has substantial indirection.
 
 ## Files to Modify
 
@@ -314,7 +347,7 @@ The Devin UI path must never show an approval widget or structured user-input co
 | `interruptTurn`      | No documented message/turn interrupt API. MVP should return unsupported or no-op with explicit error.                 |
 | `respondToRequest`   | Unsupported in MVP.                                                                                                   |
 | `respondToUserInput` | Unsupported in MVP.                                                                                                   |
-| `stopSession`        | Map to archive or terminate after product decision.                                                                   |
+| `stopSession`        | Default recommendation: terminate with `archive=true` to preserve history while making the session non-resumable.     |
 | `listSessions`       | Return active locally bound Devin sessions, not all org sessions.                                                     |
 | `readThread`         | Build from locally retained turn/message snapshots if needed; otherwise unsupported initially.                        |
 | `rollbackThread`     | Unsupported.                                                                                                          |
@@ -331,11 +364,20 @@ Persist enough state in `ProviderSessionDirectory.runtimePayload` to survive rec
   lastStatus: "running",
   lastStatusDetail: "working",
   lastMessageCursor: "opaque-cursor-or-null",
+  lastMessageEventId: "evt-...",
   createdAsUserId: null,
   usedCreateEndpoint: true,
   supportsMessageAttachments: false
 }
 ```
+
+Keep `resumeCursor` and `runtimePayload` conceptually separate.
+
+- `resumeCursor` should hold the minimum provider-native state required to resume polling safely.
+- `runtimePayload` should hold operator/product metadata needed for recovery and UI, such as `orgId`, `devinId`, `sessionUrl`, `lastStatus`, `lastStatusDetail`, `cwd`, and `modelSelection`.
+- `runtimePayload` should also preserve documented session metadata that may matter for recovery or future UX, such as `isArchived`, `childSessionIds`, `parentSessionId`, and `structuredOutput` when present.
+
+This repo already reads persisted `cwd` and `modelSelection` back out of `runtimePayload` during recovery in `ProviderService`. Devin should fit that pattern cleanly.
 
 ### Event synthesis strategy
 
@@ -352,6 +394,10 @@ That means:
 - assistant output likely arrives as buffered message chunks per poll cycle
 - "waiting for approval" and "waiting for user" should be surfaced as stateful warnings, not interactive request widgets
 
+MVP Devin should **not** emit actionable `request.opened` / structured user-input runtime flows for `waiting_for_approval` or `waiting_for_user`.
+
+Those remote states are observable, but the documented API does not show a corresponding T3-resolvable action surface. Emit non-interactive warnings plus `sessionUrl`, not fake actionable requests.
+
 ### Polling policy
 
 Phase 3 needs an explicit polling contract so the adapter does not become an unbounded background load generator.
@@ -361,7 +407,8 @@ Phase 3 needs an explicit polling contract so the adapter does not become an unb
 | Remote state                                            | Poll interval | Notes                                               |
 | ------------------------------------------------------- | ------------- | --------------------------------------------------- |
 | `creating`, `claimed`, `running`, `resuming`            | `5s`          | Moderate polling while work is actively progressing |
-| `waiting_for_user`, `waiting_for_approval`, `suspended` | `10s`         | Slow polling while blocked on external action       |
+| `waiting_for_user`, `waiting_for_approval`              | `10s`         | Slow polling while blocked on external action       |
+| `suspended`                                             | `10s`         | Slow polling, but branch UX by `status_detail`      |
 | `exit`, `error`                                         | stop polling  | Terminal                                            |
 
 **Failure backoff**
@@ -383,9 +430,17 @@ Phase 3 needs an explicit polling contract so the adapter does not become an unb
 
 - whether Devin exposes published rate limits that require a stricter default interval than the values above
 
+Before implementation starts, define replay/idempotency rules explicitly:
+
+- what exactly advances the persisted cursor: API `end_cursor`, last message id, timestamp, or a compound checkpoint
+- how duplicate messages across overlapping pages are suppressed
+- whether `event_id` can be treated as the stable per-message dedupe key for replay suppression
+- how session-status polling and message polling interact without double-emitting `turn.completed`
+- what terminal condition closes the local poll loop when the remote session is complete but a local T3 session still exists
+
 ## Implementation Phases
 
-> Recommended order: 0 → 1 → 2 → 3 → 4 → 5
+> Recommended order: 0 → 1 → 2 → 3a → 3b → 4 → 5
 >
 > The early phases are contract and snapshot work so the provider is visible and selectable. The runtime adapter follows once the repo can represent Devin safely.
 
@@ -406,6 +461,7 @@ Phase 3 needs an explicit polling contract so the adapter does not become an unb
    - contracts compile
    - web/provider model helpers accept `devin`
    - settings defaults decode cleanly
+   - provider presence in contracts/settings does not force any harness-specific assumptions
 
 ### Phase 1: Provider Snapshot and Config Validation
 
@@ -427,6 +483,26 @@ Phase 3 needs an explicit polling contract so the adapter does not become an unb
    - bad org id yields warning/error with actionable message
    - valid config shows Devin in `server.providersUpdated`
 
+Snapshot semantics must be explicit for:
+
+- missing token
+- missing org id
+- invalid token / `401`
+- org inaccessible / `403` or `404`
+- healthy config with no active remote session
+
+Permission validation should use the documented v3 RBAC model:
+
+- `GET /v3/self` requires `ReadAccountMeta`
+- create session requires `UseDevinSessions`
+- get session and list messages require `ViewOrgSessions`
+- send message / archive / terminate require `ManageOrgSessions`
+- `create_as_user_id` additionally requires `ImpersonateOrgSessions`
+
+Because `GET /v3/self` returns `org_id`, Phase 1 does not need a separate org-validation call. Compare `self.org_id` directly against configured `orgId`.
+
+CLI-backed providers in this repo model readiness differently. Devin needs equally crisp snapshot semantics, just based on config/auth/org health instead of binary probing.
+
 ### Phase 2: REST Client and Session Bootstrap
 
 1. Create `devinApi.ts` for:
@@ -439,6 +515,7 @@ Phase 3 needs an explicit polling contract so the adapter does not become an unb
    - `archiveSession`
    - `terminateSession`
 2. Normalize Devin timestamps/status fields into a small internal DTO layer
+   - include `url`, `is_archived`, `child_session_ids`, `parent_session_id`, and `structured_output`
 3. Implement `DevinAdapter.startSession`
    - bind thread locally
    - no remote session yet, unless architecture prefers eager creation
@@ -453,7 +530,14 @@ Phase 3 needs an explicit polling contract so the adapter does not become an unb
    - attachment upload failure is surfaced cleanly
    - no duplicate remote session on retry with existing binding
 
-### Phase 3: Polling, Message Cursor, and Canonical Events
+Lazy remote creation is a formal invariant:
+
+- `startSession` returns a valid local `ProviderSession`
+- `resumeCursor` may be absent before first turn
+- first successful `sendTurn` is the moment the adapter becomes remotely bound
+- retries after partial failure must not create duplicate remote Devin sessions when a binding already contains `devinId`
+
+### Phase 3a: Polling, Cursor Persistence, and Deduplication
 
 1. Implement a polling loop per active Devin session
 2. Poll:
@@ -461,30 +545,55 @@ Phase 3 needs an explicit polling contract so the adapter does not become an unb
    - `GET messages?after=<cursor>`
 3. Apply the state-based polling policy:
    - `5s` while actively working or transitioning
-   - `10s` while blocked on user/approval/suspension
+   - `10s` while blocked or suspended
    - stop on terminal state
 4. Apply failure backoff with jitter and a `30s` cap
 5. Store latest cursor from `end_cursor`
-6. Deduplicate newly seen messages using cursor and/or event/message IDs
-7. Map data into canonical runtime events:
-   - local first-turn create => `session.started`, `thread.started`, `turn.started`
-   - new assistant text => `item.started`, `content.delta`, `item.completed`
-   - remote terminal status => `session.state.changed`, `turn.completed`, `runtime.warning`
-8. Map `status_detail`:
-   - `working` => running
-   - `finished` => completed/ready
-   - `waiting_for_user` => waiting + warning + open-in-Devin UX
-   - `waiting_for_approval` => waiting + warning + open-in-Devin UX
-9. Add reconnect-safe recovery from persisted binding and cursor
-10. Add a safety ceiling for per-cycle pagination drain and global poll concurrency
+6. Decide and document the replay checkpoint:
+   - cursor only
+   - cursor + `event_id`
+   - or a stronger compound checkpoint if needed
+7. Deduplicate newly seen messages using cursor and/or stable message IDs
+8. Add reconnect-safe recovery from persisted binding and cursor
+9. Add a safety ceiling for per-cycle pagination drain and global poll concurrency
+10. Handle mid-session auth or permission failure:
+   - detect `401` / permission loss
+   - stop polling cleanly
+   - emit a structured runtime error
+   - do not retry in a hot loop
 11. **Verify:**
 
 - paginated messages are not replayed repeatedly
 - session restarts continue polling from stored state
+- repeated poll failures back off instead of hot-looping
+- auth revocation or permission loss stops polling cleanly
+
+### Phase 3b: Canonical Event Synthesis and UX States
+
+1. Map data into canonical runtime events:
+   - local first-turn create => `session.started`, `thread.started`, `turn.started`
+   - new assistant text => `item.started`, `content.delta`, `item.completed`
+   - remote terminal status => `session.state.changed`, `turn.completed`, `runtime.warning`
+   - use the documented narrow message schema (`event_id`, `message`, `source`, `created_at`) and avoid assuming richer message subtypes until proven
+2. Map running-context `status_detail`:
+   - `working` => running
+   - `finished` => completed/ready
+   - `waiting_for_user` => waiting + warning + open-in-Devin UX
+   - `waiting_for_approval` => waiting + warning + open-in-Devin UX
+3. Map suspended-context `status_detail` with distinct UX:
+   - `inactivity`, `user_request` => suspended + informational warning + open-in-Devin path
+   - `usage_limit_exceeded`, `out_of_credits`, `out_of_quota`, `no_quota_allocation`, `payment_declined`, `org_usage_limit_exceeded` => suspended + billing/quota error state, not generic "resolve in Devin"
+   - `error` => runtime error / degraded session state
+4. Surface the remote `sessionUrl` whenever the user must continue in Devin
+5. **Verify:**
+
+- paginated messages are not replayed repeatedly
 - buffered assistant output renders in the UI
 - waiting states are visible and non-broken
 - open-in-Devin user flow is explicit when T3 cannot resolve the state
-- repeated poll failures back off instead of hot-looping
+- billing/quota suspended states surface distinct actionable errors
+
+Prefer not to modify `packages/contracts/src/providerRuntime.ts` for Phase 3. The adapter should map Devin into the current canonical event vocabulary unless implementation reveals a true contract gap that cannot be expressed today.
 
 ### Phase 4: Follow-up Turns and Stop Semantics
 
@@ -493,8 +602,9 @@ Phase 3 needs an explicit polling contract so the adapter does not become an unb
    - safest MVP: attachments only on initial session create
    - if later verified, allow per-message attachments
 3. Implement `stopSession`
-   - choose archive vs terminate
-   - document the choice in code and task notes
+   - default recommendation: `DELETE .../sessions/{id}?archive=true`
+   - preserve history while making the stop irreversible
+   - document clearly that archived sessions cannot be resumed or modified
 4. Make unsupported operations explicit:
    - `interruptTurn`
    - `respondToRequest`
@@ -505,6 +615,8 @@ Phase 3 needs an explicit polling contract so the adapter does not become an unb
    - stop cleans local binding and remote state consistently
    - unsupported methods fail with structured provider errors
 
+The MVP attachment rule is explicit: **first-turn/session-create only** unless docs or wire evidence later prove per-message attachments are supported.
+
 ### Phase 5: UX Hardening, Advanced Features, and Documentation
 
 1. Add explicit UI copy for Devin limitations:
@@ -513,9 +625,11 @@ Phase 3 needs an explicit polling contract so the adapter does not become an unb
    - model switch unsupported
 2. Consider optional advanced follow-ons:
    - `create_as_user_id`
+   - `advanced_mode` (`analyze`, `create`, `improve`, `batch`, `manage`)
    - playbook/session tags
    - knowledge IDs / repo links
    - structured output schema
+   - parent/child session relationships for future subagent work
 3. Add operator notes to `ai_docs/provider_onboarding.md` if needed
 4. Remove any temporary feature flag if confidence is sufficient
 5. **Verify:**
@@ -524,7 +638,7 @@ Phase 3 needs an explicit polling contract so the adapter does not become an unb
 
 ## MVP Definition
 
-**MVP = Phase 0 + Phase 1 + Phase 2 + Phase 3 + Phase 4 core send/stop flow**
+**MVP = Phase 0 + Phase 1 + Phase 2 + Phase 3a + Phase 3b + Phase 4 core send/stop flow**
 
 That yields:
 
@@ -570,6 +684,8 @@ Not included in MVP:
 - [ ] Create `DevinProvider` service and live layer
 - [ ] Validate token with `/v3/self`
 - [ ] Validate configured `orgId`
+- [ ] Validate documented permission split: `ReadAccountMeta`, `UseDevinSessions`, `ViewOrgSessions`, `ManageOrgSessions`
+- [ ] If `create_as_user_id` is ever configured, validate `ImpersonateOrgSessions`
 - [ ] Expose snapshot message for missing token / missing org / bad permissions
 - [ ] Register `DevinProvider` in `ProviderRegistry`
 
@@ -581,10 +697,16 @@ Not included in MVP:
 - [ ] Implement polling loop for session status and messages
 - [ ] Implement message pagination with `first` and `after`
 - [ ] Deduplicate paginated messages across polling cycles
+- [ ] Decide whether `event_id` is sufficient as the stable message dedupe key
 - [ ] Map remote status and messages into canonical runtime events
+- [ ] Distinguish suspended billing/quota states from generic blocked states in the UX mapping
 - [ ] Implement follow-up turn delivery through `POST .../messages`
-- [ ] Implement stop semantics through archive or terminate
+- [ ] Implement stop semantics with a default of `DELETE ?archive=true`
 - [ ] Return structured unsupported errors for approval, user input, rollback, and interrupt
+
+- [ ] Define persisted Devin resume cursor semantics before coding recovery logic
+- [ ] Define duplicate-suppression rules for overlapping poll windows
+- [ ] Emit non-interactive waiting-state warnings with `sessionUrl` instead of actionable request widgets
 
 - [ ] Add server integration tests for first turn, multi-turn, polling, reconnect, and stop
 - [ ] Add web tests for provider selection and fallback behavior if needed
@@ -610,7 +732,7 @@ Not included in MVP:
 | `interruptTurn`      | Unsupported in MVP unless a documented endpoint is found                         |
 | `respondToRequest`   | Unsupported in MVP                                                               |
 | `respondToUserInput` | Unsupported in MVP                                                               |
-| `stopSession`        | Archive or terminate remote session, then clear local binding                    |
+| `stopSession`        | Default to `DELETE ?archive=true`, then clear local binding                      |
 | `listSessions`       | Return locally active Devin-backed thread sessions                               |
 | `readThread`         | Optional local reconstruction from polled messages; may remain limited initially |
 | `rollbackThread`     | Unsupported in MVP                                                               |
@@ -637,7 +759,7 @@ Not included in MVP:
    - Cursor-based pagination reduces replay risk, but incorrect cursor persistence will duplicate assistant output or miss messages.
 
 7. **Stop semantics are product-significant**
-   - Archive and terminate are not the same. The adapter must choose deliberately and document the tradeoff.
+   - Archive is irreversible: archived sessions can still be viewed but cannot be resumed or modified. The adapter must choose deliberately and document the tradeoff.
 
 8. **Token handling**
    - Storing `cog_` tokens in persistent server settings would be a bad default. Prefer env or secret injection.
@@ -646,16 +768,22 @@ Not included in MVP:
    - `ManageOrgSessions`, `ViewOrgSessions`, `UseDevinSessions`, and maybe `ImpersonateOrgSessions` all matter. A partially permissioned service user can fail in non-obvious ways.
 
 10. **Capability mismatch with current UI**
-
-- Existing T3 UX expects richer provider interactions. Devin must degrade explicitly rather than silently.
+   - Existing T3 UX expects richer provider interactions. Devin must degrade explicitly rather than silently.
 
 11. **Polling load and rate budgeting**
-
-- One poll loop per active session can turn into avoidable API pressure without explicit interval, backoff, jitter, and concurrency caps.
+   - One poll loop per active session can turn into avoidable API pressure without explicit interval, backoff, jitter, and concurrency caps.
 
 12. **Lazy-create UX divergence**
+   - Devin remote sessions are created on first turn, not necessarily on `startSession`. That changes when failures surface and must be visible in product behavior.
 
-- Devin remote sessions are created on first turn, not necessarily on `startSession`. That changes when failures surface and must be visible in product behavior.
+13. **Runtime event contract creep**
+   - It will be tempting to add Devin-specific runtime event variants for convenience. That would ripple through ingestion, checkpoints, ws server, and UI. Prefer synthesis into the existing canonical runtime event model unless a real gap is proven.
+
+14. **Over-factoring before behavior is proven**
+   - Adding many Devin-specific service abstractions up front may increase integration surface without reducing real implementation risk. The hard part is replay-safe polling behavior, not interface count.
+
+15. **Mid-session auth revocation**
+   - If a `cog_` token is revoked or loses permissions while polling is active, the adapter must detect the `401`/permission failure, stop polling cleanly, emit a structured runtime error, and avoid retry hot loops.
 
 ## Success Criteria
 
@@ -670,6 +798,7 @@ Not included in MVP:
 - [ ] Polling cadence, backoff, and stop conditions are explicit and implemented
 - [ ] Waiting states include an open-in-Devin user path
 - [ ] Unsupported approval/user-input flows surface clear warnings or structured errors
+- [ ] No new provider-specific runtime event contract is required for MVP
 - [ ] `bun fmt`, `bun lint`, and `bun typecheck` pass
 
 ### Full
@@ -700,7 +829,7 @@ Do not run `bun test`. If workspace tests are needed, use `bun run test`.
 | -------------------------------------- | ------------- | ------------- | ----------------------------------------------------------------------------------- |
 | `apps/server/src/provider/devinApi.ts` | 200-300       | 220-320       | REST client + DTO normalization for 8-ish endpoints                                 |
 | `DevinProvider` service + layer        | 150-200       | 170-220       | Config resolution, `/v3/self`, org validation, snapshot mapping                     |
-| `DevinAdapter` service + layer         | 400-600       | 550-750       | Polling loop, cursor persistence, canonical event synthesis are the variance driver |
+| `DevinAdapter` service + layer         | 500-800       | 650-900       | Polling loop, cursor persistence, dedup, backoff, and canonical event synthesis are the variance driver |
 | Contract + web/provider wiring         | 50-100        | 80-140        | `ProviderKind`, defaults, settings, model helpers, UI selectors                     |
 | Tests                                  | 300-400       | 400-550       | REST client, provider snapshot, adapter flow, integration coverage                  |
 | **Net addition**                       | **1100-1600** | **1420-1980** | Conservative TypeScript-heavy estimate                                              |
