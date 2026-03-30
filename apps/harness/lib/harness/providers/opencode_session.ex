@@ -212,6 +212,18 @@ defmodule Harness.Providers.OpenCodeSession do
     {:stop, :normal, state}
   end
 
+  # Runtime SSE connection exhausted all reconnect attempts
+  @impl true
+  def handle_info({:runtime_sse_degraded, _pid}, state) do
+    Logger.warning("Runtime SSE degraded for thread #{state.thread_id} — live events unavailable")
+
+    emit_event(state, :session, "session/degraded", %{
+      "reason" => "sse_reconnect_exhausted"
+    })
+
+    {:noreply, state}
+  end
+
   # SSE events fanned out from the shared runtime
   @impl true
   def handle_info({:runtime_sse_event, event}, state) do
@@ -705,7 +717,10 @@ defmodule Harness.Providers.OpenCodeSession do
     is_nil(event_session) or event_session == session_id
   end
 
-  defp event_relevant?(_event, _state), do: false
+  defp event_relevant?(event, _state) do
+    Logger.debug("Dropping unrecognized SSE event shape: #{inspect(Map.get(event, "type", "unknown"), limit: 100)}")
+    false
+  end
 
   # --- SSE Event Handling ---
 

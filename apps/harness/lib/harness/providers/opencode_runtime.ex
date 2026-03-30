@@ -428,16 +428,21 @@ defmodule Harness.Providers.OpenCodeRuntime do
   # without cleanup.
   @impl true
   def handle_call({:lease_and_subscribe, key, thread_id, wrapper_pid}, _from, state) do
-    case RuntimeRegistry.increment_ref(key) do
-      {:ok, _count} ->
-        Process.monitor(wrapper_pid)
-        subscribers = Map.put(state.subscribers, thread_id, wrapper_pid)
-        state = %{state | subscribers: subscribers}
-        state = cancel_idle_timer(state)
-        {:reply, :ok, state}
+    if Map.has_key?(state.subscribers, thread_id) do
+      # Already subscribed — skip to avoid double monitor / ref count leak
+      {:reply, :ok, state}
+    else
+      case RuntimeRegistry.increment_ref(key) do
+        {:ok, _count} ->
+          Process.monitor(wrapper_pid)
+          subscribers = Map.put(state.subscribers, thread_id, wrapper_pid)
+          state = %{state | subscribers: subscribers}
+          state = cancel_idle_timer(state)
+          {:reply, :ok, state}
 
-      {:error, :not_found} ->
-        {:reply, {:error, :not_found}, state}
+        {:error, :not_found} ->
+          {:reply, {:error, :not_found}, state}
+      end
     end
   end
 
@@ -445,11 +450,15 @@ defmodule Harness.Providers.OpenCodeRuntime do
   # register/2 already set ref_count to 1.
   @impl true
   def handle_call({:subscribe_initial, thread_id, wrapper_pid}, _from, state) do
-    Process.monitor(wrapper_pid)
-    subscribers = Map.put(state.subscribers, thread_id, wrapper_pid)
-    state = %{state | subscribers: subscribers}
-    state = cancel_idle_timer(state)
-    {:reply, :ok, state}
+    if Map.has_key?(state.subscribers, thread_id) do
+      {:reply, :ok, state}
+    else
+      Process.monitor(wrapper_pid)
+      subscribers = Map.put(state.subscribers, thread_id, wrapper_pid)
+      state = %{state | subscribers: subscribers}
+      state = cancel_idle_timer(state)
+      {:reply, :ok, state}
+    end
   end
 
   # --- Session CRUD ---
