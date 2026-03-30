@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { XIcon } from "lucide-react";
+import { LoaderCircleIcon, RefreshCwIcon, TriangleAlertIcon, XIcon } from "lucide-react";
 
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import type { McpSessionServerViewModel, McpSessionViewModel } from "../mcp-session-logic";
 import { getMcpSessionStatusLabel } from "../mcp-session-logic";
-import { humanizeMcpServerName } from "@t3tools/shared/mcp";
+import { humanizeMcpServerName, normalizeMcpServerName } from "@t3tools/shared/mcp";
 import { ensureNativeApi } from "../nativeApi";
 import { cn } from "~/lib/utils";
 
@@ -53,9 +53,10 @@ function convertFetchedStatus(data: Record<string, unknown>): McpSessionServerVi
         state = "unknown";
     }
 
+    const normalizedName = normalizeMcpServerName(name);
     servers.push({
-      server: name,
-      displayName: humanizeMcpServerName(name),
+      server: normalizedName,
+      displayName: humanizeMcpServerName(normalizedName),
       state,
       authExpired: status === "needs_auth",
       message: typeof entry.error === "string" ? entry.error : null,
@@ -82,6 +83,8 @@ function mergeServers(
   return [...byName.values()];
 }
 
+type RefreshState = "refreshing" | "ready" | "error";
+
 export default function ThreadMcpStatusPanel({
   threadId,
   mcp,
@@ -94,21 +97,23 @@ export default function ThreadMcpStatusPanel({
   className?: string;
 }) {
   const [fetchedServers, setFetchedServers] = useState<McpSessionServerViewModel[]>([]);
-  const [isFetching, setIsFetching] = useState(true);
+  const [refreshState, setRefreshState] = useState<RefreshState>("refreshing");
 
   useEffect(() => {
     let cancelled = false;
-    setIsFetching(true);
+    setRefreshState("refreshing");
     ensureNativeApi()
       .mcp.status(threadId)
       .then((data) => {
-        if (!cancelled) setFetchedServers(convertFetchedStatus(data));
+        if (cancelled) return;
+        setFetchedServers(convertFetchedStatus(data));
+        setRefreshState("ready");
       })
       .catch(() => {
-        // Provider doesn't support MCP status — ignore
-      })
-      .finally(() => {
-        if (!cancelled) setIsFetching(false);
+        if (!cancelled) {
+          // Provider doesn't support MCP status — fall back to runtime events only.
+          setRefreshState("error");
+        }
       });
     return () => {
       cancelled = true;
@@ -119,6 +124,9 @@ export default function ThreadMcpStatusPanel({
     () => mergeServers(mcp.servers, fetchedServers),
     [mcp.servers, fetchedServers],
   );
+  const showEmptyState = servers.length === 0;
+  const showBackgroundRefresh = refreshState === "refreshing";
+  const showRefreshFallback = refreshState === "error";
 
   return (
     <Card className={cn("w-full", className)}>
@@ -140,9 +148,27 @@ export default function ThreadMcpStatusPanel({
         ) : null}
       </CardHeader>
       <CardContent className="min-h-0 space-y-3 overflow-y-auto p-4 pt-0">
-        {isFetching && servers.length === 0 ? (
-          <p className="py-4 text-center text-sm text-muted-foreground">Loading MCP status...</p>
-        ) : servers.length === 0 ? (
+        {showBackgroundRefresh ? (
+          <div className="flex items-center justify-between rounded-xl border border-border/80 bg-muted/15 px-3 py-2 text-sm">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <LoaderCircleIcon className="size-4 animate-spin" />
+              <span>Refreshing live MCP status</span>
+            </div>
+            <Badge variant="outline" size="sm">
+              Background sync
+            </Badge>
+          </div>
+        ) : null}
+        {showRefreshFallback ? (
+          <div className="flex items-center justify-between rounded-xl border border-amber-500/30 bg-amber-500/8 px-3 py-2 text-sm">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <TriangleAlertIcon className="size-4 text-amber-500" />
+              <span>Live refresh unavailable. Showing runtime activity only.</span>
+            </div>
+            <RefreshCwIcon className="size-4 text-muted-foreground/70" />
+          </div>
+        ) : null}
+        {showEmptyState ? (
           <p className="py-4 text-center text-sm text-muted-foreground">
             No MCP servers detected for this session.
           </p>

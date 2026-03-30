@@ -518,6 +518,12 @@ defmodule Harness.Providers.ClaudeSession do
         tokens -> args ++ ["--max-thinking-tokens", to_string(tokens)]
       end
 
+    args =
+      case Map.get(claude_options, "configPath") do
+        path when is_binary(path) and path != "" -> args ++ ["--mcp-config", path]
+        _ -> args
+      end
+
     # Append prompt at the end (required for --print mode)
     if prompt do
       args ++ [prompt]

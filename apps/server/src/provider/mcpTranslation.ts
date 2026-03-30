@@ -78,7 +78,32 @@ export function openCodeConfigFromResolved(config: ResolvedMcpConfig): string {
           : {
               type: server.transport === "sse" ? "sse" : "remote",
               url: server.url,
+              ...("headers" in server && server.headers ? { headers: server.headers } : {}),
+              ...("timeout" in server && typeof server.timeout === "number"
+                ? { timeout: server.timeout }
+                : {}),
               enabled: server.enabled,
+            },
+      ]),
+    ),
+  };
+  return `${JSON.stringify(payload, null, 2)}\n`;
+}
+
+export function claudeConfigFromResolved(config: ResolvedMcpConfig): string {
+  const payload = {
+    mcpServers: Object.fromEntries(
+      config.servers.map((server) => [
+        server.name,
+        server.transport === "stdio"
+          ? {
+              command: server.command,
+              args: server.args ?? [],
+              ...(server.env ? { env: server.env } : {}),
+            }
+          : {
+              type: server.transport,
+              url: server.url,
             },
       ]),
     ),
@@ -88,7 +113,7 @@ export function openCodeConfigFromResolved(config: ResolvedMcpConfig): string {
 
 export function generatedMcpDir(
   stateDir: string,
-  provider: "codex" | "cursor" | "opencode",
+  provider: "claudeAgent" | "codex" | "cursor" | "opencode",
   threadId: ThreadId,
 ): string {
   return path.join(stateDir, "mcp", provider, String(threadId));

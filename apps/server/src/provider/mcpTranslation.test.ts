@@ -4,6 +4,7 @@ import type { McpServerConfig, ResolvedMcpConfig } from "@t3tools/contracts";
 import { Effect } from "effect";
 
 import {
+  claudeConfigFromResolved,
   codexTomlFromResolved,
   generatedMcpDir,
   mergeCodexToml,
@@ -35,6 +36,11 @@ const httpServer = {
   name: "remote-api",
   transport: "http" as const,
   url: "https://api.example.com/mcp",
+  headers: {
+    Authorization: "Bearer secret-token",
+    "x-ref-api-key": "ref-123",
+  },
+  timeout: 2500,
   enabled: true,
 } as McpServerConfig;
 
@@ -166,6 +172,42 @@ it.effect("openCodeConfigFromResolved maps HTTP server to remote type", () =>
     const parsed = JSON.parse(result) as { mcp: Record<string, Record<string, unknown>> };
 
     assert.equal(parsed.mcp["remote-api"]!.type, "remote");
+    assert.deepEqual(parsed.mcp["remote-api"]!.headers, {
+      Authorization: "Bearer secret-token",
+      "x-ref-api-key": "ref-123",
+    });
+    assert.equal(parsed.mcp["remote-api"]!.timeout, 2500);
+  }),
+);
+
+// ── claudeConfigFromResolved ─────────────────────────────────────
+
+it.effect("claudeConfigFromResolved maps stdio server to Claude mcpServers format", () =>
+  Effect.sync(() => {
+    const result = claudeConfigFromResolved(makeConfig([stdioServer]));
+    const parsed = JSON.parse(result) as { mcpServers: Record<string, Record<string, unknown>> };
+
+    assert.deepEqual(parsed.mcpServers["my-server"], {
+      command: "node",
+      args: ["server.js", "--port=3000"],
+      env: { NODE_ENV: "production", API_KEY: "secret123" },
+    });
+  }),
+);
+
+it.effect("claudeConfigFromResolved maps remote server with explicit transport type", () =>
+  Effect.sync(() => {
+    const result = claudeConfigFromResolved(makeConfig([httpServer, sseServer]));
+    const parsed = JSON.parse(result) as { mcpServers: Record<string, Record<string, unknown>> };
+
+    assert.deepEqual(parsed.mcpServers["remote-api"], {
+      type: "http",
+      url: "https://api.example.com/mcp",
+    });
+    assert.deepEqual(parsed.mcpServers["event-stream"], {
+      type: "sse",
+      url: "https://events.example.com/stream",
+    });
   }),
 );
 
@@ -177,5 +219,14 @@ it.effect("generatedMcpDir constructs correct per-session path", () =>
     const result = generatedMcpDir("/app/state", "codex", threadId);
 
     assert.equal(result, "/app/state/mcp/codex/thread-42");
+  }),
+);
+
+it.effect("generatedMcpDir supports Claude session paths", () =>
+  Effect.sync(() => {
+    const threadId = ThreadId.makeUnsafe("thread-42");
+    const result = generatedMcpDir("/app/state", "claudeAgent", threadId);
+
+    assert.equal(result, "/app/state/mcp/claudeAgent/thread-42");
   }),
 );

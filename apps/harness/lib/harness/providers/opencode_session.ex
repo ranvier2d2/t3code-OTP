@@ -225,6 +225,10 @@ defmodule Harness.Providers.OpenCodeSession do
 
             emit_event(state, :session, "session/ready", %{})
             persist_binding(state)
+            # Rehydrate MCP server status from REST API so the panel
+            # populates immediately — SSE is forward-only and won't replay
+            # startup events that fired before we connected.
+            rehydrate_mcp_status(state)
             # Notify any callers waiting for ready
             Enum.each(state.ready_waiters, &GenServer.reply(&1, :ok))
             state = %{state | ready_waiters: []}
@@ -320,6 +324,9 @@ defmodule Harness.Providers.OpenCodeSession do
     )
 
     sse_pid = start_sse_listener(state)
+    # Rehydrate MCP status from REST API — SSE is forward-only so any
+    # mcp.status.updated events emitted during the disconnect gap are lost.
+    rehydrate_mcp_status(state)
     # Reset timing state for the new SSE connection so we capture the gap on resume
     {:noreply,
      %{state | sse_pid: sse_pid, sse_connected_at: reconnect_at, permission_timing_logged: false}}
@@ -1635,24 +1642,93 @@ defmodule Harness.Providers.OpenCodeSession do
   end
 
   defp persist_binding(state) do
-    # Only persist durable identifiers — port is ephemeral and stale after restart
+    # Only persist durable identifiers — port is ephemeral and stale after restart.
+    # Include mcpConfigVersion so on resume we can detect config drift.
     cursor_json =
-      Jason.encode!(%{
-        "threadId" => state.thread_id,
-        "sessionId" => state.opencode_session_id
-      })
+      Jason.encode!(
+        %{
+          "threadId" => state.thread_id,
+          "sessionId" => state.opencode_session_id
+        }
+        |> maybe_put_mcp_config_version(state)
+      )
 
     Harness.Storage.upsert_binding(state.thread_id, state.provider, cursor_json)
   end
 
+  defp maybe_put_mcp_config_version(cursor, state) do
+    case state.mcp_config do
+      %{"version" => v} when is_binary(v) -> Map.put(cursor, "mcpConfigVersion", v)
+      _ -> cursor
+    end
+  end
+
+  # Fetch MCP server status from OpenCode REST API and emit
+  # mcpServer/startupStatus/updated events for each server.  This rehydrates
+  # the MCP panel after SSE reconnect or on initial setup (SSE is forward-only
+  # and doesn't replay events missed during a connection gap).
+  defp rehydrate_mcp_status(state) do
+    case http_get("#{state.base_url}/mcp") do
+      {:ok, servers} when is_map(servers) ->
+        count = map_size(servers)
+
+        if count > 0 do
+          Logger.info(
+            "Rehydrating #{count} MCP server statuses for thread #{state.thread_id}"
+          )
+        end
+
+        Enum.each(servers, fn {name, raw} ->
+          status =
+            case raw do
+              %{"status" => s} when is_binary(s) -> s
+              _ -> "unknown"
+            end
+
+          error_msg =
+            case raw do
+              %{"error" => e} when is_binary(e) -> e
+              _ -> nil
+            end
+
+          emit_event(state, :notification, "mcpServer/startupStatus/updated", %{
+            "server" => name,
+            "status" => %{"state" => status},
+            "error" => error_msg,
+            "source" => "rehydration",
+            "sessionId" => state.opencode_session_id
+          })
+        end)
+
+      {:error, reason} ->
+        Logger.debug(
+          "MCP status rehydration skipped for thread #{state.thread_id}: #{inspect(reason)}"
+        )
+
+      _ ->
+        :ok
+    end
+  end
+
   defp emit_event(state, kind, method, payload) do
+    # Tag events with the OpenCode session ID for attribution.
+    # Currently the harness assumes 1:1 process-to-session mapping,
+    # but this prepares for shared-runtime (multiple sessions per
+    # opencode serve process) where events need explicit scoping.
+    attributed_payload =
+      if state.opencode_session_id do
+        Map.put_new(payload, "opencode_session_id", state.opencode_session_id)
+      else
+        payload
+      end
+
     event =
       Event.new(%{
         thread_id: state.thread_id,
         provider: state.provider,
         kind: kind,
         method: method,
-        payload: payload
+        payload: attributed_payload
       })
 
     state.event_callback.(event)

@@ -60,6 +60,7 @@ import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { DIRECT_PROVIDER_CAPABILITIES } from "../providerCapabilities.ts";
+import { McpConfigService } from "../Services/McpConfig.ts";
 import { getClaudeModelCapabilities } from "./ClaudeProvider.ts";
 import {
   ProviderAdapterProcessError,
@@ -71,6 +72,7 @@ import {
 } from "../Errors.ts";
 import { ClaudeAdapter, type ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
+import { claudeConfigFromResolved, generatedMcpDir } from "../mcpTranslation.ts";
 
 const PROVIDER = "claudeAgent" as const;
 type ClaudeTextStreamKind = Extract<RuntimeContentStreamKind, "assistant_text" | "reasoning_text">;
@@ -167,6 +169,10 @@ interface ClaudeQueryRuntime extends AsyncIterable<SDKMessage> {
   readonly setMaxThinkingTokens: (maxThinkingTokens: number | null) => Promise<void>;
   readonly close: () => void;
 }
+
+type ClaudeQueryOptionsWithMcp = ClaudeQueryOptions & {
+  readonly mcpConfig?: string;
+};
 
 export interface ClaudeAdapterLiveOptions {
   readonly createQuery?: (input: {
@@ -946,6 +952,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
   return Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const serverConfig = yield* ServerConfig;
+    const mcpConfigService = yield* Effect.service(McpConfigService);
     const nativeEventLogger =
       options?.nativeEventLogger ??
       (options?.nativeEventLogPath !== undefined
@@ -2762,6 +2769,43 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           ),
         );
         const claudeBinaryPath = claudeSettings.binaryPath;
+        const resolvedMcp = yield* mcpConfigService.getSnapshot(input.threadId);
+        const mcpConfigPath =
+          resolvedMcp && resolvedMcp.servers.length > 0
+            ? yield* Effect.gen(function* () {
+                const generatedDir = generatedMcpDir(
+                  serverConfig.stateDir,
+                  "claudeAgent",
+                  input.threadId,
+                );
+                const configPath = `${generatedDir}/.mcp.json`;
+                yield* fileSystem.makeDirectory(generatedDir, { recursive: true }).pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new ProviderAdapterProcessError({
+                        provider: PROVIDER,
+                        threadId,
+                        detail: "Failed to create Claude MCP configuration directory.",
+                        cause,
+                      }),
+                  ),
+                );
+                yield* fileSystem
+                  .writeFileString(configPath, `${claudeConfigFromResolved(resolvedMcp)}\n`)
+                  .pipe(
+                    Effect.mapError(
+                      (cause) =>
+                        new ProviderAdapterProcessError({
+                          provider: PROVIDER,
+                          threadId,
+                          detail: "Failed to write Claude MCP configuration.",
+                          cause,
+                        }),
+                    ),
+                  );
+                return configPath;
+              })
+            : undefined;
         const modelSelection =
           input.modelSelection?.provider === "claudeAgent" ? input.modelSelection : undefined;
         const requestedEffort = trimOrNull(modelSelection?.options?.effort ?? null);
@@ -2781,7 +2825,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           ...(fastMode ? { fastMode: true } : {}),
         };
 
-        const queryOptions: ClaudeQueryOptions = {
+        const queryOptions: ClaudeQueryOptionsWithMcp = {
           ...(input.cwd ? { cwd: input.cwd } : {}),
           ...(modelSelection?.model ? { model: modelSelection.model } : {}),
           pathToClaudeCodeExecutable: claudeBinaryPath,
@@ -2797,6 +2841,7 @@ function makeClaudeAdapter(options?: ClaudeAdapterLiveOptions) {
           includePartialMessages: true,
           canUseTool,
           env: process.env,
+          ...(mcpConfigPath ? { mcpConfig: mcpConfigPath } : {}),
           ...(input.cwd ? { additionalDirectories: [input.cwd] } : {}),
         };
 

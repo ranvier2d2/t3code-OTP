@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -23,8 +23,13 @@ import { attachmentRelativePath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { ProviderAdapterValidationError } from "../Errors.ts";
+import { McpConfigService } from "../Services/McpConfig.ts";
 import { ClaudeAdapter } from "../Services/ClaudeAdapter.ts";
 import { makeClaudeAdapterLive, type ClaudeAdapterLiveOptions } from "./ClaudeAdapter.ts";
+
+type ClaudeQueryOptionsWithMcp = ClaudeQueryOptions & {
+  readonly mcpConfig?: string;
+};
 
 class FakeClaudeQuery implements AsyncIterable<SDKMessage> {
   private readonly queue: Array<SDKMessage> = [];
@@ -135,12 +140,13 @@ function makeHarness(config?: {
   readonly nativeEventLogger?: ClaudeAdapterLiveOptions["nativeEventLogger"];
   readonly cwd?: string;
   readonly baseDir?: string;
+  readonly mcpConfig?: Parameters<typeof McpConfigService.layerTest>[0];
 }) {
   const query = new FakeClaudeQuery();
   let createInput:
     | {
         readonly prompt: AsyncIterable<SDKUserMessage>;
-        readonly options: ClaudeQueryOptions;
+        readonly options: ClaudeQueryOptionsWithMcp;
       }
     | undefined;
 
@@ -169,6 +175,7 @@ function makeHarness(config?: {
           config?.baseDir ?? "/tmp",
         ),
       ),
+      Layer.provideMerge(McpConfigService.layerTest(config?.mcpConfig)),
       Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(NodeServices.layer),
     ),
@@ -321,6 +328,55 @@ describe("ClaudeAdapterLive", () => {
       Effect.provide(harness.layer),
     );
   });
+
+  it.effect(
+    "passes generated mcpConfig path into Claude query options when MCP snapshot exists",
+    () => {
+      const baseDir = mkdtempSync(path.join(os.tmpdir(), "claude-adapter-mcp-"));
+      const harness = makeHarness({
+        baseDir,
+        mcpConfig: {
+          getSnapshot: () =>
+            Effect.succeed({
+              version: "mcp-ref-test",
+              resolvedAt: "2026-03-29T00:00:00.000Z",
+              sourcePaths: ["/tmp/.t3/mcp.json"],
+              servers: [
+                {
+                  name: "ref",
+                  transport: "stdio",
+                  command: "npx",
+                  args: ["-y", "@ref-tools/mcp"],
+                  enabled: true,
+                },
+              ],
+            }),
+        },
+      });
+
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: "claudeAgent",
+          runtimeMode: "approval-required",
+        });
+
+        const createInput = harness.getLastCreateQueryInput();
+        assert.equal(
+          createInput?.options.mcpConfig,
+          path.join(baseDir, "userdata", "mcp", "claudeAgent", THREAD_ID, ".mcp.json"),
+        );
+        const generated = readFileSync(createInput!.options.mcpConfig!, "utf8");
+        assert.match(generated, /"mcpServers"/);
+        assert.match(generated, /"ref"/);
+      }).pipe(
+        Effect.ensuring(Effect.sync(() => rmSync(baseDir, { recursive: true, force: true }))),
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    },
+  );
 
   it.effect("forwards claude effort levels into query options", () => {
     const harness = makeHarness();
@@ -1192,6 +1248,7 @@ describe("ClaudeAdapterLive", () => {
       },
     }).pipe(
       Layer.provideMerge(ServerConfig.layerTest("/tmp/claude-adapter-test", "/tmp")),
+      Layer.provideMerge(McpConfigService.layerTest()),
       Layer.provideMerge(ServerSettingsService.layerTest()),
       Layer.provideMerge(NodeServices.layer),
     );

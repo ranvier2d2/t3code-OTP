@@ -51,3 +51,12 @@ Docs:
 - Codex-Monitor (Tauri, feature-complete, strong reference implementation): https://github.com/Dimillian/CodexMonitor
 
 Use these as implementation references when designing protocol handling, UX flows, and operational safeguards.
+
+## QA Testing
+
+When validating the T3Code UI with Playwright:
+
+- Assume the dev stack is already running externally when the user provides a local URL.
+- Never execute startup scripts such as `dev-harness.sh`, `dev-runner`, `pixi run dev`, `bun dev`, or equivalent server boot commands unless the user explicitly asks for it.
+- Connect directly to the user-provided URL for browser validation.
+- Default local UI target: `http://localhost:5734`

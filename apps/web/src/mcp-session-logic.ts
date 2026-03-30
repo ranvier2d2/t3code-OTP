@@ -1,5 +1,5 @@
 import type { OrchestrationThreadActivity } from "@t3tools/contracts";
-import { humanizeMcpServerName } from "@t3tools/shared/mcp";
+import { humanizeMcpServerName, normalizeMcpServerName } from "@t3tools/shared/mcp";
 
 import { compareActivitiesByOrder, parseMcpStartupWarningDetail } from "./session-logic";
 
@@ -200,7 +200,7 @@ export function deriveMcpSessionViewModel(
         continue;
       }
       hasAnyMcpActivity = true;
-      const server = ensureServerState(byServer, payload.server);
+      const server = ensureServerState(byServer, normalizeMcpServerName(payload.server));
       server.statusState = payload.status.state;
       server.statusMessage = payload.status.error ?? null;
       server.statusAt = activity.createdAt;

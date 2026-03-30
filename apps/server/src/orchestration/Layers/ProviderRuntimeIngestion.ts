@@ -28,6 +28,7 @@ import {
   type ProviderRuntimeIngestionShape,
 } from "../Services/ProviderRuntimeIngestion.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { normalizeMcpServerName } from "@t3tools/shared/mcp";
 
 const providerTurnKey = (threadId: ThreadId, turnId: TurnId) => `${threadId}:${turnId}`;
 const providerCommandId = (event: ProviderRuntimeEvent, tag: string): CommandId =>
@@ -120,6 +121,75 @@ function runtimePayloadRecord(event: ProviderRuntimeEvent): Record<string, unkno
   return payload as Record<string, unknown>;
 }
 
+function normalizeConfiguredMcpState(
+  value: unknown,
+): "starting" | "ready" | "failed" | "cancelled" | "unknown" {
+  const state = asString(value)?.trim().toLowerCase();
+  switch (state) {
+    case "pending":
+    case "starting":
+      return "starting";
+    case "connected":
+    case "ready":
+      return "ready";
+    case "disabled":
+      return "cancelled";
+    case "failed":
+    case "needs-auth":
+    case "needs_auth":
+    case "needs-client-registration":
+    case "needs_client_registration":
+      return "failed";
+    default:
+      return "unknown";
+  }
+}
+
+function sessionConfiguredMcpActivities(
+  event: ProviderRuntimeEvent,
+  maybeSequence: { sequence?: number },
+): ReadonlyArray<OrchestrationThreadActivity> {
+  const config = runtimePayloadRecord(event)?.config;
+  if (!config || typeof config !== "object") {
+    return [];
+  }
+
+  const mcpServers = (config as Record<string, unknown>).mcp_servers;
+  if (!Array.isArray(mcpServers)) {
+    return [];
+  }
+
+  return mcpServers.flatMap((entry, index) => {
+    if (!entry || typeof entry !== "object") {
+      return [];
+    }
+    const record = entry as Record<string, unknown>;
+    const name = asString(record.name);
+    const status = normalizeConfiguredMcpState(record.status);
+    if (!name) {
+      return [];
+    }
+
+    return [
+      {
+        id: `${event.eventId}:mcp:${index}` as OrchestrationThreadActivity["id"],
+        createdAt: event.createdAt,
+        tone: "info" as const,
+        kind: "mcp.status.updated",
+        summary: "MCP server status updated",
+        payload: {
+          server: normalizeMcpServerName(name),
+          status: {
+            state: status,
+          },
+        },
+        turnId: toTurnId(event.turnId) ?? null,
+        ...maybeSequence,
+      },
+    ];
+  });
+}
+
 function normalizeRuntimeTurnState(
   value: string | undefined,
 ): "completed" | "failed" | "interrupted" | "cancelled" {
@@ -198,6 +268,10 @@ function runtimeEventToActivities(
       : {};
   })();
   switch (event.type) {
+    case "session.configured": {
+      return sessionConfiguredMcpActivities(event, maybeSequence);
+    }
+
     case "request.opened": {
       if (event.payload.requestType === "tool_user_input") {
         return [];
