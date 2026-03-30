@@ -12,6 +12,9 @@ defmodule Harness.Application do
       {Phoenix.PubSub, name: Harness.PubSub},
       {Registry, keys: :unique, name: Harness.SessionRegistry},
       {DynamicSupervisor, name: Harness.SessionSupervisor, strategy: :one_for_one},
+      # Shared OpenCode runtime infrastructure (Sprint 2)
+      Harness.OpenCode.RuntimeRegistry,
+      {DynamicSupervisor, name: Harness.RuntimeSupervisor, strategy: :one_for_one},
       Harness.Storage,
       Harness.Metrics,
       Harness.SnapshotServer,
