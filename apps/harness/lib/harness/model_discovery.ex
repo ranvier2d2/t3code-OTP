@@ -83,15 +83,33 @@ defmodule Harness.ModelDiscovery do
   defp fetch_and_cache(provider) do
     case do_fetch(provider) do
       {:ok, models} ->
-        set_cached(provider, models)
-        Logger.info("Discovered #{length(models)} models for #{provider}")
-        {:ok, models}
+        sanitized = sanitize_models(models)
+        set_cached(provider, sanitized)
+        Logger.info("Discovered #{length(sanitized)} models for #{provider}")
+        {:ok, sanitized}
 
       {:error, reason} = err ->
         Logger.warning("Failed to discover models for #{provider}: #{inspect(reason)}")
         err
     end
   end
+
+  # Trim whitespace from slug/name, reject empty entries, dedup by slug.
+  defp sanitize_models(models) when is_list(models) do
+    models
+    |> Enum.map(fn model ->
+      %{
+        "slug" => String.trim(to_string(model["slug"] || "")),
+        "name" => String.trim(to_string(model["name"] || ""))
+      }
+    end)
+    |> Enum.reject(fn %{"slug" => slug, "name" => name} ->
+      slug == "" or name == ""
+    end)
+    |> Enum.uniq_by(fn %{"slug" => slug} -> slug end)
+  end
+
+  defp sanitize_models(_), do: []
 
   defp do_fetch("cursor") do
     binary = System.find_executable("cursor") || "cursor"

@@ -1245,20 +1245,24 @@ defmodule Harness.Providers.OpenCodeSession do
   # --- Model Discovery ---
 
   defp extract_models_from_providers(providers) when is_list(providers) do
-    Enum.flat_map(providers, fn provider_data ->
+    providers
+    |> Enum.flat_map(fn provider_data ->
       provider_id = Map.get(provider_data, "id")
       models = Map.get(provider_data, "models", %{})
 
       if is_binary(provider_id) and is_map(models) do
         Enum.map(models, fn {model_key, model_data} ->
           slug = "#{provider_id}/#{model_key}"
-          name = Map.get(model_data, "name", model_key)
-          %{"slug" => slug, "name" => name}
+          raw_name = Map.get(model_data, "name", model_key)
+          # Sanitize: trim whitespace (fixes "DeepSeek R1 (Turbo)\t" etc.)
+          name = String.trim(to_string(raw_name))
+          %{"slug" => String.trim(slug), "name" => name}
         end)
       else
         []
       end
     end)
+    |> Enum.uniq_by(fn %{"slug" => slug} -> slug end)
   end
 
   defp extract_models_from_providers(_), do: []
