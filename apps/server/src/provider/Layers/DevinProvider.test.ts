@@ -183,7 +183,6 @@ describe("DevinProvider", () => {
         globalThis.fetch = previousFetch;
       }
     }).pipe(
-      Effect.provide(ProviderRegistryLive),
       Effect.provide(
         Layer.mergeAll(
           NodeServices.layer,
@@ -203,7 +202,7 @@ describe("DevinProvider", () => {
             }
             throw new Error(`Unexpected provider probe: ${command} ${args.join(" ")}`);
           }),
-        ),
+        ).pipe((deps) => Layer.provideMerge(ProviderRegistryLive, deps)),
       ),
     ),
   );
