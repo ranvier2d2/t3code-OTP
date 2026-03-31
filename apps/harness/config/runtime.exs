@@ -4,11 +4,6 @@ import Config
 harness_port = String.to_integer(System.get_env("T3CODE_HARNESS_PORT", "4321"))
 harness_secret = System.get_env("T3CODE_HARNESS_SECRET", "dev-harness-secret")
 
-cursor_acp_enabled =
-  System.get_env("T3CODE_CURSOR_ACP", "0")
-  |> String.downcase()
-  |> then(&(&1 in ["1", "true", "yes", "on"]))
-
 # Resolve database path: T3CODE_HOME/harness.db or default priv/data/harness.db
 harness_db_path =
   case System.get_env("T3CODE_HOME") do
@@ -17,8 +12,7 @@ harness_db_path =
   end
 
 config :harness,
-  harness_secret: harness_secret,
-  cursor_acp_enabled: cursor_acp_enabled
+  harness_secret: harness_secret
 
 if harness_db_path do
   config :harness, Harness.Storage, db_path: harness_db_path

@@ -177,6 +177,14 @@ export class HarnessClientManager {
     });
   }
 
+  async setConfig(threadId: string, configId: string, value: string): Promise<void> {
+    await this.push("session.setConfig", {
+      threadId,
+      configId,
+      value,
+    });
+  }
+
   async stopSession(threadId: string): Promise<void> {
     await this.push("session.stop", { threadId });
   }

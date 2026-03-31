@@ -146,6 +146,7 @@ export type CanonicalRequestType = typeof CanonicalRequestType.Type;
 const ProviderRuntimeEventType = Schema.Literals([
   "session.started",
   "session.configured",
+  "session.commands.available",
   "session.state.changed",
   "session.exited",
   "thread.started",
@@ -196,6 +197,7 @@ export type ProviderRuntimeEventType = typeof ProviderRuntimeEventType.Type;
 
 const SessionStartedType = Schema.Literal("session.started");
 const SessionConfiguredType = Schema.Literal("session.configured");
+const SessionCommandsAvailableType = Schema.Literal("session.commands.available");
 const SessionStateChangedType = Schema.Literal("session.state.changed");
 const SessionExitedType = Schema.Literal("session.exited");
 const ThreadStartedType = Schema.Literal("thread.started");
@@ -265,6 +267,21 @@ const SessionConfiguredPayload = Schema.Struct({
   config: UnknownRecordSchema,
 });
 export type SessionConfiguredPayload = typeof SessionConfiguredPayload.Type;
+
+const ProviderCommandType = Schema.Literals(["builtin", "user", "project", "other"]);
+export type ProviderCommandType = typeof ProviderCommandType.Type;
+
+export const ProviderCommand = Schema.Struct({
+  name: Schema.String,
+  description: Schema.String,
+  type: ProviderCommandType,
+});
+export type ProviderCommand = typeof ProviderCommand.Type;
+
+const SessionCommandsAvailablePayload = Schema.Struct({
+  commands: Schema.Array(ProviderCommand),
+});
+export type SessionCommandsAvailablePayload = typeof SessionCommandsAvailablePayload.Type;
 
 const SessionStateChangedPayload = Schema.Struct({
   state: RuntimeSessionState,
@@ -612,6 +629,14 @@ const ProviderRuntimeSessionConfiguredEvent = Schema.Struct({
 export type ProviderRuntimeSessionConfiguredEvent =
   typeof ProviderRuntimeSessionConfiguredEvent.Type;
 
+const ProviderRuntimeSessionCommandsAvailableEvent = Schema.Struct({
+  ...ProviderRuntimeEventBase.fields,
+  type: SessionCommandsAvailableType,
+  payload: SessionCommandsAvailablePayload,
+});
+export type ProviderRuntimeSessionCommandsAvailableEvent =
+  typeof ProviderRuntimeSessionCommandsAvailableEvent.Type;
+
 const ProviderRuntimeSessionStateChangedEvent = Schema.Struct({
   ...ProviderRuntimeEventBase.fields,
   type: SessionStateChangedType,
@@ -946,6 +971,7 @@ export type ProviderRuntimeErrorEvent = typeof ProviderRuntimeErrorEvent.Type;
 export const ProviderRuntimeEventV2 = Schema.Union([
   ProviderRuntimeSessionStartedEvent,
   ProviderRuntimeSessionConfiguredEvent,
+  ProviderRuntimeSessionCommandsAvailableEvent,
   ProviderRuntimeSessionStateChangedEvent,
   ProviderRuntimeSessionExitedEvent,
   ProviderRuntimeThreadStartedEvent,

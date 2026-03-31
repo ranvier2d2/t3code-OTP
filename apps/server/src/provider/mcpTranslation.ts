@@ -111,6 +111,32 @@ export function claudeConfigFromResolved(config: ResolvedMcpConfig): string {
   return `${JSON.stringify(payload, null, 2)}\n`;
 }
 
+export function acpMcpServersFromResolved(config: ResolvedMcpConfig): Record<string, unknown>[] {
+  return config.servers
+    .filter((server) => server.enabled)
+    .map((server) => {
+      if (server.transport === "stdio") {
+        return {
+          name: server.name,
+          type: "command",
+          command: server.command,
+          args: server.args ?? [],
+          env: server.env
+            ? Object.entries(server.env).map(([key, value]) => ({ key, value }))
+            : [],
+        };
+      }
+      return {
+        name: server.name,
+        type: server.transport,
+        url: server.url,
+        headers: "headers" in server && server.headers
+          ? Object.entries(server.headers).map(([key, value]) => ({ key, value }))
+          : [],
+      };
+    });
+}
+
 export function generatedMcpDir(
   stateDir: string,
   provider: "claudeAgent" | "codex" | "cursor" | "opencode",

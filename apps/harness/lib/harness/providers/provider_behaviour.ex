@@ -4,7 +4,7 @@ defmodule Harness.Providers.ProviderBehaviour do
 
   Defines the callbacks that every provider session GenServer must implement
   to be routable through SessionManager. This ensures consistent public APIs
-  across CodexSession, CursorSession, OpenCodeSession, and ClaudeSession.
+  across CodexSession, AcpSession, OpenCodeSession, and ClaudeSession.
 
   ## Required callbacks
 
@@ -83,6 +83,17 @@ defmodule Harness.Providers.ProviderBehaviour do
   """
   @callback rollback_thread(pid :: pid(), thread_id :: String.t(), num_turns :: non_neg_integer()) ::
               {:ok, map()} | {:error, term()}
+
+  @doc """
+  Set a session configuration option (e.g., model, mode).
+
+  Optional callback. Providers that don't support mid-session config changes
+  return `{:error, :not_supported}`.
+  """
+  @callback set_config(pid :: pid(), config_id :: String.t(), value :: String.t()) ::
+              {:ok, map()} | {:error, term()}
+
+  @optional_callbacks [set_config: 3]
 
   @doc """
   Stop the session if the provider module exposes an explicit shutdown helper.

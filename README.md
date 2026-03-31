@@ -13,7 +13,6 @@ Browser ──── Node Server ───────────────�
                │    (single connection)         │
                │                                ├── CodexSession    (stdio JSON-RPC)
                ├── ClaudeAdapter (Agent SDK)    ├── AcpSession      (stdio JSON-RPC 2.0, ACP)
-               │                                ├── CursorSession   (stdio stream-json, legacy)
                │                                └── OpenCodeSession (HTTP + SSE)
                │                                │
                │    normalized events           │
@@ -145,8 +144,7 @@ python3 output/stress-test/viz-real.py
 | ----------------- | -------------------------------------------------- |
 | `SessionManager`  | DynamicSupervisor routing, session lifecycle       |
 | `CodexSession`    | Codex JSON-RPC GenServer                           |
-| `AcpSession`      | Cursor ACP JSON-RPC 2.0 GenServer (primary)        |
-| `CursorSession`   | Cursor stream-json GenServer (legacy, behind flag) |
+| `AcpSession`      | Cursor ACP JSON-RPC 2.0 GenServer                  |
 | `OpenCodeSession` | OpenCode HTTP+SSE + tool mapping                   |
 | `ClaudeSession`   | Claude CLI GenServer (stress tests only)           |
 | `MockSession`     | Configurable mock for stress testing               |

@@ -272,6 +272,21 @@ function runtimeEventToActivities(
       return sessionConfiguredMcpActivities(event, maybeSequence);
     }
 
+    case "session.commands.available": {
+      return [
+        {
+          id: event.eventId ?? (`commands-${Date.now()}` as typeof event.eventId),
+          tone: "info" as const,
+          kind: "session-commands",
+          summary: "Provider commands available",
+          payload: event.payload,
+          turnId: null,
+          createdAt: event.createdAt ?? new Date().toISOString(),
+          ...maybeSequence,
+        },
+      ];
+    }
+
     case "request.opened": {
       if (event.payload.requestType === "tool_user_input") {
         return [];

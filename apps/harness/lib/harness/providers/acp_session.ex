@@ -29,11 +29,14 @@ defmodule Harness.Providers.AcpSession do
     :current_turn_id,
     :current_prompt_rpc_id,
     :reasoning_item_id,
+    available_commands: [],
+    config_options: [],
+    mcp_servers: [],
     next_id: 1,
     status: :initializing,
     ready_waiters: [],
     pending: %{},
-    tool_items: MapSet.new(),
+    tool_items: %{},
     turns: [],
     stopped: false
   ]
@@ -83,12 +86,18 @@ defmodule Harness.Providers.AcpSession do
   end
 
   @impl Harness.Providers.ProviderBehaviour
+  def set_config(pid, config_id, value) do
+    GenServer.call(pid, {:set_config, config_id, value}, 10_000)
+  end
+
+  @impl Harness.Providers.ProviderBehaviour
   def stop(pid), do: GenServer.stop(pid, :normal)
 
   @impl true
   def init(opts) do
     params = Map.get(opts, :params, %{})
     binary_path = resolve_cursor_binary(opts)
+    mcp_servers = get_in(params, ["providerOptions", "cursor", "mcpServers"]) || []
 
     state = %__MODULE__{
       thread_id: Map.fetch!(opts, :thread_id),
@@ -96,7 +105,8 @@ defmodule Harness.Providers.AcpSession do
       event_callback: Map.fetch!(opts, :event_callback),
       params: params,
       binary_path: binary_path,
-      buffer: ""
+      buffer: "",
+      mcp_servers: mcp_servers
     }
 
     emit_event(state, :session, "session/started", %{
@@ -316,7 +326,11 @@ defmodule Harness.Providers.AcpSession do
 
   @impl true
   def handle_call({:respond_to_user_input, request_id, answers}, _from, state) do
-    case find_pending_provider_request(state, request_id, "session/elicitation") do
+    pending =
+      find_pending_provider_request(state, request_id, "session/elicitation") ||
+        find_pending_provider_request(state, request_id, "cursor/ask_question")
+
+    case pending do
       {rpc_id, _entry} ->
         send_to_port(state, JsonRpc.encode_response(rpc_id, answers))
 
@@ -340,6 +354,50 @@ defmodule Harness.Providers.AcpSession do
       end)
 
     {:reply, {:ok, %{threadId: state.thread_id, turns: turns}}, state}
+  end
+
+  @impl true
+  def handle_call({:set_config, config_id, value}, from, state) do
+    if ready?(state) do
+      {id, state} = next_request_id(state)
+
+      state =
+        send_rpc_request(
+          state,
+          id,
+          "session/set_config_option",
+          %{"sessionId" => state.acp_session_id, "configId" => config_id, "value" => value},
+          from
+        )
+
+      {:noreply, state}
+    else
+      {:reply, {:error, :not_ready}, state}
+    end
+  end
+
+  # Cursor ACP does not expose a live MCP server status query.
+  # We report based on session state: servers passed to session/new are
+  # assumed "connected" when the session is ready. Actual server failures
+  # inside Cursor are not observable from the harness.
+  @impl true
+  def handle_call(:mcp_status, _from, state) do
+    server_status =
+      case state.status do
+        :ready -> "connected"
+        :stopped -> "disconnected"
+        _ -> "connecting"
+      end
+
+    status =
+      state.mcp_servers
+      |> Enum.map(fn server ->
+        name = Map.get(server, "name", "unknown")
+        {name, %{"status" => server_status}}
+      end)
+      |> Map.new()
+
+    {:reply, {:ok, status}, state}
   end
 
   @impl true
@@ -436,6 +494,7 @@ defmodule Harness.Providers.AcpSession do
           state
           |> Map.put(:pending, pending)
           |> Map.put(:acp_session_id, session_id)
+          |> Map.put(:config_options, Map.get(result, "configOptions", []))
           |> Map.put(:status, :ready)
           |> maybe_cancel_ready_timer()
 
@@ -457,6 +516,12 @@ defmodule Harness.Providers.AcpSession do
         |> Map.put(:pending, pending)
         |> complete_turn("completed", %{"stopReason" => prompt_stop_reason(result)})
         |> then(&{:continue, &1})
+
+      {%{from: from, timer: timer, method: "session/set_config_option"}, pending} ->
+        if timer, do: Process.cancel_timer(timer)
+        config_options = Map.get(result, "configOptions", state.config_options)
+        if from, do: GenServer.reply(from, {:ok, %{"configOptions" => config_options}})
+        {:continue, %{state | pending: pending, config_options: config_options}}
 
       {%{from: from, timer: timer}, pending} ->
         if timer, do: Process.cancel_timer(timer)
@@ -485,17 +550,20 @@ defmodule Harness.Providers.AcpSession do
       {%{from: nil, method: method}, pending}
       when method in ["initialize", "authenticate", "session/new"] ->
         state = %{state | pending: pending}
-        stop_startup(state, Map.get(error, "message", "ACP startup failed"))
+        detail = format_error_detail(error)
+        stop_startup(state, detail)
 
       {%{from: from, timer: timer, method: "session/prompt"}, pending} ->
         if timer, do: Process.cancel_timer(timer)
-        if from, do: GenServer.reply(from, {:error, Map.get(error, "message", "Prompt failed")})
+        detail = format_error_detail(error)
+        if from, do: GenServer.reply(from, {:error, detail})
 
         emit_event(state, :error, "runtime/error", %{
-          "message" => Map.get(error, "message", "Prompt failed"),
+          "message" => detail,
           "class" => "provider_error",
           "provider" => "cursor",
-          "code" => Map.get(error, "code")
+          "code" => Map.get(error, "code"),
+          "data" => Map.get(error, "data")
         })
 
         state
@@ -557,6 +625,43 @@ defmodule Harness.Providers.AcpSession do
     )
   end
 
+  defp handle_rpc_request(state, id, "cursor/ask_question", params) do
+    request_id = Map.get(params, "toolCallId", "rpc-#{id}")
+
+    emit_event(state, :request, "user-input/requested", %{
+      "requestId" => request_id,
+      "questions" => Map.get(params, "questions", []),
+      "title" => Map.get(params, "title"),
+      "args" => params
+    })
+
+    put_provider_pending(
+      state,
+      id,
+      "cursor/ask_question",
+      Map.put(params, "requestId", request_id)
+    )
+  end
+
+  defp handle_rpc_request(state, id, "cursor/create_plan", params) do
+    request_id = Map.get(params, "toolCallId", "rpc-#{id}")
+
+    emit_event(state, :request, "turn/plan/created", %{
+      "requestId" => request_id,
+      "name" => Map.get(params, "name"),
+      "overview" => Map.get(params, "overview"),
+      "plan" => Map.get(params, "todos", []),
+      "args" => params
+    })
+
+    put_provider_pending(
+      state,
+      id,
+      "cursor/create_plan",
+      Map.put(params, "requestId", request_id)
+    )
+  end
+
   defp handle_rpc_request(state, id, "fs/" <> _suffix, _params) do
     send_to_port(state, JsonRpc.encode_error_response(id, -32_601, "fs operations not supported"))
     state
@@ -603,6 +708,16 @@ defmodule Harness.Providers.AcpSession do
     emit_event(state, :notification, "user-input/resolved", %{
       "requestId" => Map.get(params, "requestId"),
       "answers" => Map.get(params, "answers", %{})
+    })
+
+    state
+  end
+
+  defp handle_rpc_notification(state, "cursor/update_todos", params) do
+    emit_event(state, :notification, "turn/plan/updated", %{
+      "turnId" => state.current_turn_id,
+      "plan" => Map.get(params, "todos", []),
+      "merge" => Map.get(params, "merge", false)
     })
 
     state
@@ -669,15 +784,15 @@ defmodule Harness.Providers.AcpSession do
     })
 
     emit_tool_content(state, item_id, update, item_type)
-    %{state | tool_items: MapSet.put(state.tool_items, item_id)}
+    %{state | tool_items: Map.put(state.tool_items, item_id, item_type)}
   end
 
   defp apply_session_update(state, %{"sessionUpdate" => "tool_call_update"} = update) do
     item_id = Map.get(update, "toolCallId", generate_id())
-    item_type = acp_kind_to_item_type(Map.get(update, "kind"))
+    item_type = Map.get(state.tool_items, item_id, "dynamic_tool_call")
 
     state =
-      if MapSet.member?(state.tool_items, item_id) do
+      if Map.has_key?(state.tool_items, item_id) do
         state
       else
         emit_event(state, :notification, "item/started", %{
@@ -688,7 +803,7 @@ defmodule Harness.Providers.AcpSession do
           "turnId" => state.current_turn_id
         })
 
-        %{state | tool_items: MapSet.put(state.tool_items, item_id)}
+        %{state | tool_items: Map.put(state.tool_items, item_id, item_type)}
       end
 
     emit_tool_content(state, item_id, update, item_type)
@@ -715,14 +830,14 @@ defmodule Harness.Providers.AcpSession do
           "turnId" => state.current_turn_id
         })
 
-        %{state | tool_items: MapSet.delete(state.tool_items, item_id)}
+        %{state | tool_items: Map.delete(state.tool_items, item_id)}
     end
   end
 
   defp apply_session_update(state, %{"sessionUpdate" => "plan"} = update) do
     emit_event(state, :notification, "turn/plan/updated", %{
       "turnId" => state.current_turn_id,
-      "entries" => Map.get(update, "entries", Map.get(update, "plan", []))
+      "plan" => Map.get(update, "entries", Map.get(update, "plan", []))
     })
 
     state
@@ -737,12 +852,16 @@ defmodule Harness.Providers.AcpSession do
   end
 
   defp apply_session_update(state, %{"sessionUpdate" => "available_commands_update"} = update) do
-    emit_event(state, :notification, "acp/extension", %{
-      "method" => "session/update",
-      "params" => update
+    commands =
+      update
+      |> Map.get("availableCommands", [])
+      |> Enum.map(&parse_command/1)
+
+    emit_event(state, :session, "session/commands_available", %{
+      "commands" => commands
     })
 
-    state
+    %{state | available_commands: commands}
   end
 
   defp apply_session_update(state, update) do
@@ -866,12 +985,11 @@ defmodule Harness.Providers.AcpSession do
       | current_turn_id: nil,
         current_prompt_rpc_id: nil,
         status: :ready,
-        tool_items: MapSet.new(),
+        tool_items: %{},
         turns: state.turns ++ [turn]
     }
   end
 
-  defp prompt_failure_status(%{"code" => code}) when code in [-32_800, -32_801], do: "interrupted"
   defp prompt_failure_status(_), do: "failed"
 
   defp spawn_cursor_acp(state) do
@@ -926,22 +1044,27 @@ defmodule Harness.Providers.AcpSession do
 
     send_rpc_request(state, id, "session/new", %{
       "cwd" => Map.get(state.params, "cwd", File.cwd!()),
-      "mcpServers" => []
+      "mcpServers" => state.mcp_servers
     })
   end
 
   defp bootstrap_session(state) do
-    case extract_resume_session_id(state.params) do
-      nil ->
+    can_load = get_in(state.agent_capabilities || %{}, ["loadSession"]) == true
+
+    case {extract_resume_session_id(state.params), can_load} do
+      {nil, _} ->
         send_new_session_request(state)
 
-      session_id ->
+      {_session_id, false} ->
+        send_new_session_request(state)
+
+      {session_id, true} ->
         {id, state} = next_request_id(state)
 
         send_rpc_request(state, id, "session/load", %{
           "sessionId" => session_id,
           "cwd" => Map.get(state.params, "cwd", File.cwd!()),
-          "mcpServers" => []
+          "mcpServers" => state.mcp_servers
         })
     end
   end
@@ -1152,6 +1275,50 @@ defmodule Harness.Providers.AcpSession do
 
   defp extract_error(other),
     do: %{"code" => -32_603, "message" => "Unknown failure: #{inspect(other)}"}
+
+  defp format_error_detail(%{"message" => message, "data" => data}) when is_list(data) do
+    fields =
+      Enum.map_join(data, ", ", fn
+        %{"path" => path, "expected" => expected} -> "#{Enum.join(path, ".")}: expected #{expected}"
+        %{"path" => path, "message" => msg} -> "#{Enum.join(path, ".")}: #{msg}"
+        other -> inspect(other)
+      end)
+
+    "#{message} (#{fields})"
+  end
+
+  defp format_error_detail(%{"message" => message, "data" => %{"message" => detail}}),
+    do: "#{message}: #{detail}"
+
+  defp format_error_detail(%{"message" => message, "data" => %{"details" => detail}}),
+    do: "#{message}: #{detail}"
+
+  defp format_error_detail(%{"message" => message}), do: message
+  defp format_error_detail(_), do: "ACP error"
+
+  defp parse_command(%{"name" => name, "description" => raw}) when is_binary(raw) do
+    {type, description} = extract_command_type(raw)
+    %{"name" => name, "description" => description, "type" => type}
+  end
+
+  defp parse_command(%{"name" => name}), do: %{"name" => name, "description" => "", "type" => "other"}
+  defp parse_command(other), do: %{"name" => inspect(other), "description" => "", "type" => "other"}
+
+  defp extract_command_type(desc) do
+    cond do
+      String.contains?(desc, "(builtin skill)") -> {"builtin", clean_description(desc)}
+      String.contains?(desc, "(project skill)") -> {"project", clean_description(desc)}
+      String.contains?(desc, "(user skill)") -> {"user", clean_description(desc)}
+      true -> {"other", String.trim(desc)}
+    end
+  end
+
+  defp clean_description(desc) do
+    desc
+    |> String.replace(~r/\s*\((builtin|user|project) skill\)\s*$/, "")
+    |> String.replace(~r/^[>|]-?\s*/, "")
+    |> String.trim()
+  end
 
   defp generate_id do
     Base.encode16(:crypto.strong_rand_bytes(16), case: :lower)

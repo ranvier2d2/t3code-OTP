@@ -44,6 +44,7 @@ import {
 import {
   derivePendingApprovals,
   derivePendingUserInputs,
+  deriveProviderCommands,
   derivePhase,
   deriveTimelineEntries,
   deriveActiveWorkStartedAt,
@@ -88,6 +89,7 @@ import PlanSidebar from "./PlanSidebar";
 import ThreadMcpStatusPanel from "./ThreadMcpStatusPanel";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import { deriveMcpSessionViewModel } from "../mcp-session-logic";
+import { ProviderCommandsPanel } from "./chat/ProviderCommandsPanel";
 import {
   BotIcon,
   ChevronDownIcon,
@@ -96,6 +98,7 @@ import {
   CircleAlertIcon,
   ListTodoIcon,
   PlugIcon,
+  ZapIcon,
   LockIcon,
   LockOpenIcon,
   XIcon,
@@ -345,6 +348,7 @@ export default function ChatView({ threadId }: ChatViewProps) {
   const [expandedWorkGroups, setExpandedWorkGroups] = useState<Record<string, boolean>>({});
   const [planSidebarOpen, setPlanSidebarOpen] = useState(false);
   const [mcpPanelOpen, setMcpPanelOpen] = useState(false);
+  const [commandsPanelOpen, setCommandsPanelOpen] = useState(false);
   const [isComposerFooterCompact, setIsComposerFooterCompact] = useState(false);
   // Tracks whether the user explicitly dismissed the sidebar for the active turn.
   const planSidebarDismissedForTurnRef = useRef<string | null>(null);
@@ -681,6 +685,11 @@ export default function ChatView({ threadId }: ChatViewProps) {
     () => derivePendingUserInputs(threadActivities),
     [threadActivities],
   );
+  const providerCommands = useMemo(
+    () => deriveProviderCommands(threadActivities),
+    [threadActivities],
+  );
+  const showCommandsButton = providerCommands.length > 0;
   const activePendingUserInput = pendingUserInputs[0] ?? null;
   const activePendingDraftAnswers = useMemo(
     () =>
@@ -3983,6 +3992,62 @@ export default function ChatView({ threadId }: ChatViewProps) {
                                   <PlugIcon />
                                   <span className="sr-only sm:not-sr-only">MCP</span>
                                 </Button>
+                              </>
+                            ) : null}
+                            {showCommandsButton ? (
+                              <>
+                                <Separator
+                                  orientation="vertical"
+                                  className="mx-0.5 hidden h-4 sm:block"
+                                />
+                                <div className="relative">
+                                  <Button
+                                    variant="ghost"
+                                    className={cn(
+                                      "shrink-0 whitespace-nowrap px-2 sm:px-3",
+                                      commandsPanelOpen
+                                        ? "text-blue-400 hover:text-blue-300"
+                                        : "text-muted-foreground/70 hover:text-foreground/80",
+                                    )}
+                                    size="sm"
+                                    type="button"
+                                    onClick={() => setCommandsPanelOpen((v) => !v)}
+                                    title={commandsPanelOpen ? "Hide commands" : "Show provider commands"}
+                                    aria-expanded={commandsPanelOpen}
+                                    aria-haspopup="dialog"
+                                  >
+                                    <ZapIcon />
+                                    <span className="sr-only sm:not-sr-only">Commands</span>
+                                  </Button>
+                                  {commandsPanelOpen ? (
+                                    <div className="absolute bottom-full left-0 z-50 mb-2">
+                                      <ProviderCommandsPanel
+                                        commands={providerCommands}
+                                        onSelectCommand={(name) => {
+                                          const composerEl = document.querySelector<HTMLTextAreaElement>(
+                                            "[data-chat-composer-input]",
+                                          );
+                                          if (composerEl) {
+                                            const nativeInputValueSetter =
+                                              Object.getOwnPropertyDescriptor(
+                                                window.HTMLTextAreaElement.prototype,
+                                                "value",
+                                              )?.set;
+                                            nativeInputValueSetter?.call(
+                                              composerEl,
+                                              `/${name} ${composerEl.value}`,
+                                            );
+                                            composerEl.dispatchEvent(
+                                              new Event("input", { bubbles: true }),
+                                            );
+                                            composerEl.focus();
+                                          }
+                                        }}
+                                        onClose={() => setCommandsPanelOpen(false)}
+                                      />
+                                    </div>
+                                  ) : null}
+                                </div>
                               </>
                             ) : null}
                           </>

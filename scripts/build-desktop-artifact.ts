@@ -450,9 +450,9 @@ const createBuildConfig = Effect.fn("createBuildConfig")(function* (
   includeHarness: boolean,
 ) {
   const buildConfig: Record<string, unknown> = {
-    appId: "com.t3tools.t3code",
+    appId: "com.t3tools.t3code-otp",
     productName,
-    artifactName: "T3-Code-${version}-${arch}.${ext}",
+    artifactName: "T3-Code-OTP-${version}-${arch}.${ext}",
     directories: {
       buildResources: "apps/desktop/resources",
     },

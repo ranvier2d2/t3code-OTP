@@ -159,15 +159,15 @@ export const DEFAULT_PROVIDER_CAPABILITIES: Record<ProviderKind, ProviderCapabil
     mcpConfig: "basic",
   },
   cursor: {
-    sessionModelSwitch: "restart-session",
-    supportsUserInput: false,
+    sessionModelSwitch: "in-session",
+    supportsUserInput: true,
     supportsRollback: false,
     supportsFileChangeApproval: false,
     resume: "basic",
     subagents: "none",
     attachments: "basic",
     replay: "full",
-    mcpConfig: "none",
+    mcpConfig: "basic",
   },
   opencode: {
     sessionModelSwitch: "restart-session",

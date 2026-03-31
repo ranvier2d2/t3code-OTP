@@ -50,6 +50,7 @@ import {
 import { HARNESS_PROVIDER_CAPABILITIES } from "../providerCapabilities.ts";
 import { McpConfigService } from "../Services/McpConfig.ts";
 import {
+  acpMcpServersFromResolved,
   claudeConfigFromResolved,
   generatedMcpDir,
   mergeCodexToml,
@@ -491,11 +492,16 @@ function mapHarnessEventToRuntimeEvents(
     ];
   }
   if (event.method === "session/configured") {
+    const config: Record<string, unknown> = {};
+    if (payload?.currentModeId) config.currentModeId = payload.currentModeId;
+    if (payload?.currentModelId) config.currentModelId = payload.currentModelId;
     return [
       {
         ...runtimeEventBase(event, canonicalThreadId),
-        type: "session.state.changed",
-        payload: { state: "ready" },
+        type: "session.configured" as const,
+        payload: {
+          config: Object.keys(config).length > 0 ? config : { updated: true },
+        },
       },
     ];
   }
@@ -926,6 +932,72 @@ function mapHarnessEventToRuntimeEvents(
   }
 
   // -------------------------------------------------------------------------
+  // ACP extension events (Cursor-specific)
+  // -------------------------------------------------------------------------
+  if (event.method === "turn/plan/created") {
+    const steps = Array.isArray(payload?.plan) ? payload.plan : [];
+    return [
+      {
+        ...runtimeEventBase(event, canonicalThreadId),
+        type: "turn.plan.updated" as const,
+        payload: {
+          ...(asString(payload?.overview)
+            ? { explanation: asString(payload?.overview) }
+            : {}),
+          plan: steps
+            .map((entry) => asObject(entry))
+            .filter(
+              (entry): entry is Record<string, unknown> => entry !== undefined,
+            )
+            .map((entry) => ({
+              step: asString(entry.content) ?? asString(entry.title) ?? "step",
+              status:
+                entry.status === "completed" || entry.status === "inProgress"
+                  ? (entry.status as "completed" | "inProgress")
+                  : ("pending" as const),
+            })),
+        },
+      },
+    ];
+  }
+
+  if (event.method === "session/commands_available") {
+    const commands = Array.isArray(payload?.commands) ? payload.commands : [];
+    return [
+      {
+        ...runtimeEventBase(event, canonicalThreadId),
+        type: "session.commands.available" as const,
+        payload: {
+          commands: commands
+            .map((cmd) => asObject(cmd))
+            .filter(
+              (cmd): cmd is Record<string, unknown> => cmd !== undefined,
+            )
+            .map((cmd) => ({
+              name: asString(cmd.name) ?? "",
+              description: asString(cmd.description) ?? "",
+              type:
+                cmd.type === "builtin" ||
+                cmd.type === "user" ||
+                cmd.type === "project"
+                  ? (cmd.type as "builtin" | "user" | "project")
+                  : ("other" as const),
+            })),
+        },
+      },
+    ];
+  }
+
+  if (
+    event.method === "acp/extension" ||
+    event.method === "acp/session_update_unknown"
+  ) {
+    // Log for debugging but don't produce runtime events —
+    // these are informational pass-throughs from AcpSession
+    return [];
+  }
+
+  // -------------------------------------------------------------------------
   // Fallback: try provider-specific event mapping (e.g. codex/event/* methods
   // that pass through the GenServer as raw JSON-RPC notification methods).
   // -------------------------------------------------------------------------
@@ -1174,6 +1246,13 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
                           },
                         };
                       }
+                      case "cursor": {
+                        return {
+                          cursor: {
+                            mcpServers: acpMcpServersFromResolved(resolvedMcp),
+                          },
+                        };
+                      }
                       default:
                         return undefined;
                     }
@@ -1285,6 +1364,17 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
               "item/tool/requestUserInput",
               cause,
             ),
+        });
+
+      const setConfig: HarnessClientAdapterShape["setConfig"] = (
+        threadId,
+        configId,
+        value,
+      ) =>
+        Effect.tryPromise({
+          try: () => manager.setConfig(threadId, configId, value),
+          catch: (cause) =>
+            toRequestError(resolveProvider(threadId), threadId, "session/setConfig", cause),
         });
 
       const stopSession: HarnessClientAdapterShape["stopSession"] = (threadId) =>
@@ -1473,6 +1563,7 @@ export function makeHarnessClientAdapterLive(options?: HarnessClientAdapterLiveO
         interruptTurn,
         respondToRequest,
         respondToUserInput,
+        setConfig,
         stopSession,
         listSessions,
         hasSession,

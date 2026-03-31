@@ -10,7 +10,7 @@
 - Keep changes scoped to the layer that owns the behavior. Do not push runtime logic into `packages/contracts`.
 - Prefer root-cause fixes over local patches. If similar logic exists in multiple packages, extract or consolidate it.
 - Preserve predictable behavior under reconnects, partial streams, session restarts, and provider failures.
-- Keep `CursorSession` fallback paths until ACP replacements are proven end to end.
+- Cursor uses AcpSession (JSON-RPC 2.0 over ACP). The old CursorSession (CLI stream-json) has been removed.
 
 ## Validation Gates
 

@@ -117,6 +117,31 @@ defmodule HarnessWeb.HarnessChannel do
   end
 
   @impl true
+  def handle_in("session.setConfig", params, socket) do
+    with thread_id when not is_nil(thread_id) <- Map.get(params, "threadId"),
+         config_id when not is_nil(config_id) <- Map.get(params, "configId"),
+         value when not is_nil(value) <- Map.get(params, "value") do
+      case SessionManager.set_config(thread_id, config_id, value) do
+        {:ok, result} ->
+          {:reply, {:ok, result}, socket}
+
+        {:error, reason} ->
+          {:reply, {:error, %{message: format_error(reason)}}, socket}
+      end
+    else
+      nil ->
+        missing =
+          cond do
+            is_nil(Map.get(params, "threadId")) -> "threadId"
+            is_nil(Map.get(params, "configId")) -> "configId"
+            true -> "value"
+          end
+
+        {:reply, {:error, %{message: "Missing required param: #{missing}"}}, socket}
+    end
+  end
+
+  @impl true
   def handle_in("session.stop", params, socket) do
     case Map.get(params, "threadId") do
       nil ->

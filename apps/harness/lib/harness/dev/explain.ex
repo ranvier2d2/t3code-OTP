@@ -27,16 +27,16 @@ defmodule Harness.Dev.Explain do
 
       **Key differences:**
       - Codex and OpenCode are long-lived: one process handles multiple turns.
-      - Claude and Cursor spawn a new process per turn.
-      - Codex uses bidirectional stdio (JSON-RPC request/response).
-      - Claude and Cursor use unidirectional stdout (stream of JSON events).
+      - Claude spawns a new process per turn.
+      - Codex and Cursor (ACP) use bidirectional stdio (JSON-RPC request/response).
+      - Claude uses unidirectional stdout (stream of JSON events).
       - OpenCode uses HTTP POST for commands and SSE for event streaming.
       """,
       related_topics: ["startup", "bridge-contract"],
       related_files: [
         "apps/harness/lib/harness/providers/codex_session.ex",
         "apps/harness/lib/harness/providers/claude_session.ex",
-        "apps/harness/lib/harness/providers/cursor_session.ex",
+        "apps/harness/lib/harness/providers/acp_session.ex",
         "apps/harness/lib/harness/providers/opencode_session.ex"
       ]
     },

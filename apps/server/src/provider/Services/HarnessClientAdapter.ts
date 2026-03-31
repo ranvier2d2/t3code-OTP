@@ -42,6 +42,12 @@ export interface HarnessClientAdapterShape extends ProviderAdapterShape<Provider
     threadId: string,
     name: string,
   ) => import("effect").Effect.Effect<void, ProviderAdapterError>;
+  /** Set a session configuration option (model, mode, etc.) via ACP set_config_option. */
+  readonly setConfig: (
+    threadId: string & import("effect").Brand.Brand<"ThreadId">,
+    configId: string,
+    value: string,
+  ) => import("effect").Effect.Effect<void, ProviderAdapterError>;
 }
 
 /**

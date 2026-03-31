@@ -13,7 +13,6 @@ defmodule Harness.SessionManager do
   alias Harness.Providers.CodexSession
   alias Harness.Providers.ClaudeSession
   alias Harness.Providers.OpenCodeSession
-  alias Harness.Providers.CursorSession
   alias Harness.Providers.AcpSession
 
   @doc """
@@ -172,6 +171,20 @@ defmodule Harness.SessionManager do
   end
 
   @doc """
+  Set a session configuration option (model, mode, etc.).
+  Only supported by providers that implement the optional `set_config/3` callback.
+  """
+  def set_config(thread_id, config_id, value) do
+    with_session(thread_id, fn pid, module ->
+      if function_exported?(module, :set_config, 3) do
+        module.set_config(pid, config_id, value)
+      else
+        {:error, :not_supported}
+      end
+    end)
+  end
+
+  @doc """
   Stop a session.
   """
   def stop_session(thread_id) do
@@ -213,13 +226,13 @@ defmodule Harness.SessionManager do
     end)
   end
 
-  # --- MCP Management (OpenCode only) ---
+  # --- MCP Management ---
 
   @doc """
-  Get MCP server status from an active OpenCode session.
+  Get MCP server status from an active session that supports MCP.
   """
   def mcp_status(thread_id) do
-    with_opencode_session(thread_id, fn pid ->
+    with_mcp_session(thread_id, fn pid ->
       GenServer.call(pid, :mcp_status, 15_000)
     end)
   end
@@ -311,6 +324,25 @@ defmodule Harness.SessionManager do
     end
   end
 
+  @mcp_providers ["opencode", "cursor"]
+
+  defp with_mcp_session(thread_id, fun) do
+    case Registry.lookup(Harness.SessionRegistry, thread_id) do
+      [{pid, provider}] when provider in @mcp_providers ->
+        try do
+          fun.(pid)
+        catch
+          :exit, reason -> {:error, "GenServer call failed: #{inspect(reason)}"}
+        end
+
+      [{_pid, other}] ->
+        {:error, {:provider_mismatch, other}}
+
+      [] ->
+        {:error, "Session not found: #{thread_id}"}
+    end
+  end
+
   defp with_opencode_session(thread_id, fun) do
     case Registry.lookup(Harness.SessionRegistry, thread_id) do
       [{pid, "opencode"}] ->
@@ -372,13 +404,7 @@ defmodule Harness.SessionManager do
   defp provider_module("claudeAgent"), do: {:ok, ClaudeSession}
   defp provider_module("opencode"), do: {:ok, OpenCodeSession}
 
-  defp provider_module("cursor") do
-    if Application.get_env(:harness, :cursor_acp_enabled, false) do
-      {:ok, AcpSession}
-    else
-      {:ok, CursorSession}
-    end
-  end
+  defp provider_module("cursor"), do: {:ok, AcpSession}
 
   defp provider_module("mock"), do: {:ok, Harness.Providers.MockSession}
   defp provider_module(other), do: {:error, "Unsupported provider: #{other}"}
