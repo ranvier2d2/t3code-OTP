@@ -614,6 +614,16 @@
         T3Code team has their own roadmap — this is one developer's architectural exploration.
       </div>
 
+      <p>
+        <strong>A note on scope.</strong> The <code>HarnessService</code> abstraction in PR #581 is
+        itself still under discussion — Theo's own review comment asks what differentiates it from
+        the existing <code>ProviderService</code> / <code>ProviderServiceLive</code> layer. This
+        exploration treats the harness boundary as a useful architectural surface regardless of where
+        it ultimately lives in T3Code's stack. If the team consolidates <code>HarnessService</code>
+        back into <code>ProviderService</code>, the OTP mapping still applies — it's the supervision
+        boundary that matters, not the class name.
+      </p>
+
       <h2>The constraint that shapes everything</h2>
 
       <p>
@@ -724,11 +734,11 @@
         </p>
       </div>
 
-      <blockquote>
-        "You can get about 70% there with enough engineering. The remaining 30% — preemptive
-        scheduling, per-process garbage collection, true fault isolation — requires runtime-level
-        support." — George Guimarães
-      </blockquote>
+      <p>
+        Guimarães argues that you can get about 70% of the way there with enough engineering — the
+        remaining 30%, which includes preemptive scheduling, per-process garbage collection, and true
+        fault isolation, requires runtime-level support.
+      </p>
 
       <p>
         Guimarães
@@ -1275,12 +1285,12 @@
 
       <div class="stats-row">
         <div class="stat">
-          <div class="stat-val" style="color: var(--red)">2,800%</div>
-          <div class="stat-label">V8 heap growth with 1 leaky session (48→158 MB)</div>
+          <div class="stat-val" style="color: var(--red)">~229%</div>
+          <div class="stat-label">V8 heap growth with 1 leaky session (48→158 MB, +110 MB)</div>
         </div>
         <div class="stat">
-          <div class="stat-val" style="color: var(--green)">102%</div>
-          <div class="stat-label">BEAM memory with same leaky session</div>
+          <div class="stat-val" style="color: var(--green)">~2%</div>
+          <div class="stat-label">BEAM total memory growth with same leak (bounded per-process)</div>
         </div>
         <div class="stat">
           <div class="stat-val" style="color: var(--amber)">169ms</div>
@@ -1296,10 +1306,10 @@
       <p>
         We scaled concurrent sessions from 5 to 200, all streaming simultaneously. From 5 to 100,
         both runtimes are functionally identical — you would not be able to tell them apart. At 150,
-        Node's event loop lag creeps to 199ms. At 200, Node collapses: latency jumps to 3.3 seconds,
+        Node's event loop lag creeps to 199ms. At 200, Node degrades sharply: latency jumps to 3.3 seconds,
         throughput <em>drops</em> (the event loop is so saturated it processes fewer events, not
         more), and event loop lag hits 1.2 seconds. Elixir at 200 sessions: 607ms latency, 18,000
-        events/sec, 0% scheduler utilization, constant ~268KB per session.
+        events/sec, near-zero scheduler utilization, constant ~268KB per session.
       </p>
       <p>
         This is the number that matters: if T3Code stays at 1–10 sessions, PR #581's Node approach
@@ -1324,21 +1334,20 @@
 
       <h2>What adding a new provider costs</h2>
 
-      <div class="stats-row">
-        <div class="stat">
-          <div class="stat-val">~3,000</div>
-          <div class="stat-label">LOC per new TypeScript adapter (current)</div>
-        </div>
-        <div class="stat">
-          <div class="stat-val" style="color: var(--accent)">500–700</div>
-          <div class="stat-label">LOC per new GenServer provider (OTP)</div>
-        </div>
-      </div>
-
       <p>
-        Each new provider is a single GenServer module + a clause in
-        <code>SessionManager.provider_module/1</code>. No new TypeScript adapter. The centralized
-        <code>HarnessService</code> contract means the Node side doesn't change at all.
+        Adding a new provider to T3Code today means writing a TypeScript adapter, extending the
+        contracts, adding tests, and wiring it through the orchestration layer. In the OTP
+        architecture, providers that speak a CLI or HTTP protocol (and don't require a Node-specific
+        SDK) can be added as a single GenServer module + a clause in
+        <code>SessionManager.provider_module/1</code>, with no changes to the Node side. For providers
+        that <em>do</em> require Node SDKs — Claude (Agent SDK) and Codex (app server) today — the
+        Node adapter is still necessary. The OTP layer manages supervision and lifecycle, but the SDK
+        call itself stays in Node.
+      </p>
+      <p>
+        The savings are real but scoped: the more providers that communicate via standard protocols
+        (CLI, HTTP, WebSocket), the more the OTP architecture reduces per-provider integration cost.
+        For SDK-gated providers, both sides need code.
       </p>
 
       <h2>Why subagents change the calculus</h2>
@@ -1434,7 +1443,7 @@
         shipping Node + Electron at scale than most people writing about this topic. If this whole
         OTP angle is an over-engineered solution to a problem that doesn't materialize in practice,
         that's a genuinely useful answer. The worst outcome isn't "no" — it's building something
-        nobody pressure-tested with someone who actually knows the terrain.
+        nobody pressure-tested with someone who's shipped this at scale.
       </div>
 
       <a class="repo-link" href="https://github.com/Ranvier-Technologies/t3code-OTP">
@@ -1484,7 +1493,7 @@
           <tr>
             <td>3</td>
             <td>Memory leak in one session</td>
-            <td>Shared heap +145MB, lag +169ms p99</td>
+            <td>Shared heap +110 MB, lag +169ms p99</td>
             <td>Leak bounded per-process (94–352KB)</td>
             <td><span class="tag tag-otp">elixir</span></td>
           </tr>
@@ -1498,8 +1507,8 @@
           <tr>
             <td>5</td>
             <td>50+ concurrent sessions</td>
-            <td>Degrades at ~150 (3.3s p99 at 200)</td>
-            <td>607ms at 200, 0% scheduler util</td>
+            <td>Degrades sharply at ~150 (3.3s p99 at 200)</td>
+            <td>607ms at 200, near-zero scheduler util</td>
             <td><span class="tag tag-otp">elixir</span></td>
           </tr>
           <tr>
@@ -1534,7 +1543,7 @@
             <td>10</td>
             <td>Desktop packaging</td>
             <td>Electron bundles Node, zero extra cost</td>
-            <td>+50–100MB BEAM runtime</td>
+            <td>+60–80 MB BEAM runtime</td>
             <td><span class="tag tag-node">node</span></td>
           </tr>
         </tbody>
@@ -1553,17 +1562,18 @@
         <strong style="color: var(--fg)"
           >A note on the "careful application code" failure class.</strong
         >
-        These aren't hypothetical concerns — Macroscope's review of PR #581 itself found concrete
-        instances: adapter-emitted events pass through <code>#publish</code> without re-sequencing,
-        which can regress the global snapshot sequence and corrupt projections across all sessions;
-        <code>shutdownSession</code> aborts the event stream before the adapter completes,
-        potentially losing final <code>session.exited</code> events; and
+        Macroscope's review of PR #581 found concrete instances worth examining. One is a logic bug
+        independent of runtime choice: adapter-emitted events pass through <code>#publish</code>
+        without re-sequencing, which can regress the global snapshot sequence — this would need
+        fixing in Elixir too. But the other two are lifecycle-management concerns that OTP handles
+        structurally: <code>shutdownSession</code> aborts the event stream before the adapter
+        completes, potentially losing final <code>session.exited</code> events; and
         <code>attachSession</code> never calls <code>#startStreaming</code>, leaving attached
-        sessions deaf to events. These are exactly the class of lifecycle gaps that OTP supervision
-        handles declaratively — not because the Node code is bad (it's early WIP and
-        well-structured), but because managing concurrent session lifecycles through application
-        code requires getting every edge case right manually. A supervisor doesn't have edge cases.
-        It has a restart policy.
+        sessions deaf to events. These are exactly the class of lifecycle gaps where a supervisor's
+        declarative restart and shutdown policies eliminate entire categories of ordering bugs — not
+        because the Node code is bad (it's early WIP and well-structured), but because managing
+        concurrent session lifecycles through application code requires getting every edge case right
+        manually. A supervisor doesn't have edge cases. It has a restart policy.
       </p>
 
       <p style="font-size: 0.85rem; color: var(--fg2)">
