@@ -286,7 +286,10 @@ export const DevinAdapterLive = Layer.effect(
               toValidationError("DevinAdapter.config", "Devin provider settings are missing."),
             );
           }
-          const orgId = trimOrNull(providerSettings.orgId);
+          const orgId =
+            trimOrNull(process.env.T3CODE_DEVIN_ORG_ID) ??
+            trimOrNull(process.env.DEVIN_ORG_ID) ??
+            trimOrNull(providerSettings.orgId);
           const apiKey =
             trimOrNull(process.env.T3CODE_DEVIN_API_KEY) ?? trimOrNull(process.env.DEVIN_API_KEY);
           if (!orgId) {
