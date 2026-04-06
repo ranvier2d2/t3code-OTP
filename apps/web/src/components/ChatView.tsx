@@ -994,7 +994,8 @@ export default function ChatView({ threadId }: ChatViewProps) {
     for (const timelineEntry of timelineEntries) {
       if (timelineEntry.kind !== "message") continue;
       if (timelineEntry.message.role !== "assistant") continue;
-      const messageAt = Date.parse(timelineEntry.message.createdAt);
+      const anchorIso = timelineEntry.message.completedAt ?? timelineEntry.message.createdAt;
+      const messageAt = Date.parse(anchorIso);
       if (Number.isNaN(messageAt) || messageAt < turnStartedAt) continue;
       fallbackMatch = timelineEntry.id;
       if (messageAt <= turnCompletedAt) {

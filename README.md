@@ -2,7 +2,7 @@
 
 > **Independent experiment.** Not affiliated with, endorsed by, or approved by the T3Code team or [Ping.gg](https://ping.gg). One developer's architectural exploration — nothing more.
 
-An OTP supervision layer for multi-provider AI coding agents. Four providers, real responses, real tool execution — managed through a single supervised runtime instead of per-provider adapter discipline.
+An OTP supervision layer for multi-provider AI coding agents. Five providers (Codex, Claude, Cursor, OpenCode, Devin), real responses, real tool execution — managed through a single supervised runtime instead of per-provider adapter discipline.
 
 Built as a fork of [T3Code](https://github.com/pingdotgg/t3code). For the full architectural case: **[Why T3Code Might Want Two Runtimes](https://ranvier-technologies.github.io/t3code-OTP/)**.
 
@@ -19,7 +19,7 @@ Browser ──── Node Server ───────────────�
                │◄───────────────────────────────│
 ```
 
-**Note:** Claude uses the Anthropic Agent SDK directly in Node (same as upstream T3Code). The remaining three providers — Codex, Cursor, OpenCode — are managed by the Elixir harness.
+**Note:** Claude uses the Anthropic Agent SDK directly in Node (same as upstream T3Code). Devin runs entirely in Node via REST API. The remaining three providers — Codex, Cursor, OpenCode — are managed by the Elixir harness.
 
 ---
 
@@ -77,7 +77,7 @@ pixi run credo                       # Elixir linter
 
 ## Provider support
 
-All 4 providers verified E2E in browser with real prompts and real tool execution:
+All 5 providers verified E2E in browser with real prompts and real tool execution:
 
 | Provider | Runtime | Transport                        | Tool Use                                 |
 | -------- | ------- | -------------------------------- | ---------------------------------------- |
@@ -85,6 +85,7 @@ All 4 providers verified E2E in browser with real prompts and real tool executio
 | Codex    | Elixir  | stdio JSON-RPC via Erlang Port   | `commandExecution` — file created        |
 | Cursor   | Elixir  | ACP JSON-RPC 2.0 via Erlang Port | file read/write via permission flow      |
 | OpenCode | Elixir  | HTTP + SSE via raw TCP + Req     | `file_change write` via permission reply |
+| Devin    | Node    | REST API (polling)               | managed by Devin cloud                   |
 
 Full feature matrix including session lifecycle, approval requests, streaming tool output, and thread persistence: see the [companion writeup](https://ranvier-technologies.github.io/t3code-OTP/).
 
@@ -98,7 +99,7 @@ Full feature matrix including session lifecycle, approval requests, streaming to
 
 | Metric                                  | Node                                      | Elixir                        |
 | --------------------------------------- | ----------------------------------------- | ----------------------------- |
-| Memory with 1 leaky session             | Shared heap → 2,800% of baseline (158 MB) | BEAM total → 102% of baseline |
+| Memory with 1 leaky session             | 48→158 MB (+110 MB shared heap, ~229%)     | ~2% total growth (leak bounded per-process) |
 | Event loop lag during leak              | p99 = 169ms                               | N/A (no shared event loop)    |
 | Sibling sessions affected               | All degraded                              | Zero                          |
 | Latency at 200 concurrent sessions      | 3,314ms p99                               | 607ms p99                     |
@@ -169,7 +170,8 @@ python3 output/stress-test/viz-real.py
 
 - **Sidebar stale state (KI-1):** `ProviderRuntimeIngestion.ts` requires a thread to exist before processing events. Fix identified, not shipped.
 - **No streaming tool output for Cursor/OpenCode (KI-3):** upstream protocol limitation — only tool start/complete events emitted.
-- **Cursor:** no rollback API. ACP adds user question support (`cursor/ask_question`) and structured elicitation, but these are not yet wired to the UI.
+- **Cursor:** no rollback API. ACP user questions (`cursor/ask_question`) and elicitation are handled but slash commands panel pending upstream alignment.
+- **Devin:** most limited provider — no MCP, no model switching, no subagents. Approvals happen in Devin's own UI.
 - **Desktop packaging:** BEAM runtime adds ~60–80 MB to Electron bundle.
 - **Single-run stress tests:** architectural demonstrations, not statistically significant.
 

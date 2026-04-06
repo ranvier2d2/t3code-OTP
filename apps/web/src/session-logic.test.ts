@@ -964,6 +964,43 @@ describe("deriveTimelineEntries", () => {
       },
     });
   });
+
+  it("places tool/work rows before a completed assistant message when tools ran mid-turn", () => {
+    const entries = deriveTimelineEntries(
+      [
+        {
+          id: MessageId.makeUnsafe("user-1"),
+          role: "user",
+          text: "hi",
+          createdAt: "2026-02-23T00:00:00.000Z",
+          streaming: false,
+        },
+        {
+          id: MessageId.makeUnsafe("assistant-1"),
+          role: "assistant",
+          text: "Answer after tools",
+          createdAt: "2026-02-23T00:00:01.000Z",
+          completedAt: "2026-02-23T00:00:04.000Z",
+          streaming: false,
+        },
+      ],
+      [],
+      [
+        {
+          id: "work-1",
+          createdAt: "2026-02-23T00:00:02.500Z",
+          label: "Ran command",
+          tone: "tool",
+        },
+      ],
+    );
+
+    expect(entries.map((entry) => entry.kind)).toEqual(["message", "work", "message"]);
+    expect(entries[2]).toMatchObject({
+      kind: "message",
+      message: { id: MessageId.makeUnsafe("assistant-1") },
+    });
+  });
 });
 
 describe("deriveWorkLogEntries context window handling", () => {

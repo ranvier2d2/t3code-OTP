@@ -907,6 +907,23 @@ export function hasToolActivityForTurn(
   return activities.some((activity) => activity.turnId === turnId && activity.tone === "tool");
 }
 
+/**
+ * Chronological position for interleaving timeline rows. Assistant messages use
+ * `completedAt` when present so tool/work rows (timestamped at tool completion)
+ * stay above the finished answer even though `createdAt` is pinned to the first
+ * streaming chunk — see server read-model `thread.message-sent` projection.
+ */
+export function timelineEntrySortAt(entry: TimelineEntry): string {
+  if (entry.kind === "message") {
+    const { message } = entry;
+    if (message.role === "assistant" && message.completedAt) {
+      return message.completedAt;
+    }
+    return message.createdAt;
+  }
+  return entry.createdAt;
+}
+
 export function deriveTimelineEntries(
   messages: ChatMessage[],
   proposedPlans: ProposedPlan[],
@@ -930,9 +947,11 @@ export function deriveTimelineEntries(
     createdAt: entry.createdAt,
     entry,
   }));
-  return [...messageRows, ...proposedPlanRows, ...workRows].toSorted((a, b) =>
-    a.createdAt.localeCompare(b.createdAt),
-  );
+  return [...messageRows, ...proposedPlanRows, ...workRows].toSorted((a, b) => {
+    const byTime = timelineEntrySortAt(a).localeCompare(timelineEntrySortAt(b));
+    if (byTime !== 0) return byTime;
+    return a.id.localeCompare(b.id);
+  });
 }
 
 export function inferCheckpointTurnCountByTurnId(
